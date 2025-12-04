@@ -1,0 +1,289 @@
+package discovery
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"strconv"
+
+	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/hashicorp/consul/api"
+)
+
+// consulDiscovery Consul服务发现实现.
+type consulDiscovery struct {
+	client *api.Client
+	config *Config
+	logger logger.Logger
+}
+
+// newConsulDiscovery 创建Consul服务发现实例.
+func newConsulDiscovery(config *Config, log logger.Logger) (Discovery, error) {
+	// 创建Consul客户端配置
+	consulConfig := api.DefaultConfig()
+	if config.Addr != "" {
+		consulConfig.Address = config.Addr
+	}
+
+	// 创建客户端
+	client, err := api.NewClient(consulConfig)
+	if err != nil {
+		log.Errorf("[Discovery] 创建consul客户端失败 [地址:%s] [错误:%v]", consulConfig.Address, err)
+		return nil, ErrClientCreate
+	}
+
+	return &consulDiscovery{
+		client: client,
+		config: config,
+		logger: log,
+	}, nil
+}
+
+// Register 注册服务实例，返回服务ID.
+func (c *consulDiscovery) Register(ctx context.Context, serviceName, address string) (string, error) {
+	if serviceName == "" {
+		return "", ErrEmptyName
+	}
+
+	if address == "" {
+		return "", ErrEmptyAddress
+	}
+
+	// 解析地址和端口
+	host, port, err := parseAddress(address)
+	if err != nil {
+		return "", err
+	}
+
+	// 如果host是0.0.0.0，转换为127.0.0.1
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+
+	// 生成唯一的服务ID
+	serviceID := GenerateServiceID(serviceName)
+
+	// 创建健康检查配置
+	healthCheck := &api.AgentServiceCheck{
+		CheckID:                        fmt.Sprintf("%s-health", serviceID),
+		Name:                           fmt.Sprintf("%s Health Check", serviceName),
+		Notes:                          fmt.Sprintf("TCP端口健康检查 for %s", serviceName),
+		TCP:                            fmt.Sprintf("%s:%d", host, port),
+		Interval:                       c.config.HealthCheck.Interval,
+		Timeout:                        c.config.HealthCheck.Timeout,
+		DeregisterCriticalServiceAfter: c.config.HealthCheck.DeregisterAfter,
+	}
+
+	// 使用gRPC作为默认配置
+	defaultMeta := c.config.GetServiceConfig(ProtocolGRPC)
+
+	registration := &api.AgentServiceRegistration{
+		ID:      serviceID,
+		Name:    serviceName,
+		Address: host,
+		Port:    port,
+		Tags:    defaultMeta.Tags,
+		Meta: map[string]string{
+			"version":  defaultMeta.Version,
+			"protocol": defaultMeta.Protocol,
+		},
+		Check: healthCheck,
+	}
+
+	// 使用context注册服务
+	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
+	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
+	if err != nil {
+		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [地址:%s:%d] [错误:%v]",
+			serviceName, host, port, err)
+		return "", ErrRegister
+	}
+
+	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s:%d]",
+		serviceName,
+		serviceID,
+		host,
+		port,
+	)
+
+	return serviceID, nil
+}
+
+// RegisterWithProtocol 根据协议注册服务实例，返回服务ID.
+func (c *consulDiscovery) RegisterWithProtocol(ctx context.Context, serviceName, address, protocol string) (string, error) {
+	if serviceName == "" {
+		return "", ErrEmptyName
+	}
+
+	if address == "" {
+		return "", ErrEmptyAddress
+	}
+
+	// 获取协议特定的元数据配置
+	serviceMeta := c.config.GetServiceConfig(protocol)
+	if serviceMeta.Protocol == "" {
+		return "", ErrUnsupportedProtocol
+	}
+
+	// 解析地址和端口
+	host, port, err := parseAddress(address)
+	if err != nil {
+		return "", err
+	}
+
+	// 如果host是0.0.0.0，转换为127.0.0.1
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+
+	// 生成协议特定的服务ID
+	serviceID := GenerateServiceID(fmt.Sprintf("%s-%s", serviceName, protocol))
+
+	// 创建协议特定的健康检查配置
+	healthCheck := &api.AgentServiceCheck{
+		CheckID:                        fmt.Sprintf("%s-health", serviceID),
+		Name:                           fmt.Sprintf("%s %s Health Check", serviceName, protocol),
+		Notes:                          fmt.Sprintf("TCP端口健康检查 for %s [%s]", serviceName, protocol),
+		TCP:                            fmt.Sprintf("%s:%d", host, port),
+		Interval:                       c.config.HealthCheck.Interval,
+		Timeout:                        c.config.HealthCheck.Timeout,
+		DeregisterCriticalServiceAfter: c.config.HealthCheck.DeregisterAfter,
+	}
+
+	// 使用协议特定的标签
+	tags := make([]string, 0, len(serviceMeta.Tags)+1)
+	tags = append(tags, serviceMeta.Tags...)
+	// 确保协议标签存在
+	if !contains(tags, protocol) {
+		tags = append(tags, protocol)
+	}
+
+	registration := &api.AgentServiceRegistration{
+		ID:      serviceID,
+		Name:    serviceName,
+		Address: host,
+		Port:    port,
+		Tags:    tags,
+		Meta: map[string]string{
+			"version":  serviceMeta.Version,
+			"protocol": serviceMeta.Protocol,
+		},
+		Check: healthCheck,
+	}
+
+	// 使用context注册服务
+	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
+	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
+	if err != nil {
+		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [协议:%s] [地址:%s:%d] [错误:%v]",
+			serviceName, protocol, host, port, err)
+		return "", ErrRegister
+	}
+
+	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s] [%s:%d] [v%s] [tags:%v]",
+		serviceName,
+		protocol,
+		serviceID,
+		host,
+		port,
+		serviceMeta.Version,
+		tags,
+	)
+
+	return serviceID, nil
+}
+
+// Unregister 注销服务实例.
+func (c *consulDiscovery) Unregister(ctx context.Context, serviceID string) error {
+	if serviceID == "" {
+		return ErrEmptyServiceID
+	}
+
+	// 检查context是否已取消
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// 使用带超时控制的goroutine执行注销操作
+	errChan := make(chan error, 1)
+	go func() {
+		err := c.client.Agent().ServiceDeregister(serviceID)
+		errChan <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errChan:
+		if err != nil {
+			c.logger.Errorf("[Discovery] consul服务注销失败 [服务ID:%s] [错误:%v]", serviceID, err)
+			return ErrUnregister
+		}
+	}
+
+	c.logger.Debugf("[Discovery] 服务注销成功 [%s]", serviceID)
+	return nil
+}
+
+// Discover 发现服务实例.
+func (c *consulDiscovery) Discover(ctx context.Context, serviceName string) ([]string, error) {
+	if serviceName == "" {
+		return nil, ErrEmptyName
+	}
+
+	// 默认过滤gRPC服务,避免返回HTTP端口
+	queryOpts := &api.QueryOptions{}
+	queryOpts = queryOpts.WithContext(ctx)
+	services, _, err := c.client.Health().Service(serviceName, "grpc", true, queryOpts)
+	if err != nil {
+		c.logger.Errorf("[Discovery] consul服务发现失败 [服务名:%s] [错误:%v]", serviceName, err)
+		return nil, ErrDiscover
+	}
+
+	addresses := make([]string, 0, len(services))
+	for _, service := range services {
+		address := fmt.Sprintf("%s:%d", service.Service.Address, service.Service.Port)
+		addresses = append(addresses, address)
+		c.logger.Debugf("[Discovery] 发现服务实例 [服务名:%s] [地址:%s] [标签:%v]",
+			serviceName, address, service.Service.Tags)
+	}
+
+	if len(addresses) == 0 {
+		c.logger.Warnf("[Discovery] 未发现任何服务实例 [服务名:%s]", serviceName)
+	}
+
+	return addresses, nil
+}
+
+// Close 关闭服务发现连接.
+func (c *consulDiscovery) Close() error {
+	c.logger.Debug("[Discovery] consul服务发现连接已关闭")
+	return nil
+}
+
+// parseAddress 解析地址字符串，返回主机和端口.
+func parseAddress(address string) (string, int, error) {
+	host, portStr, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", 0, ErrInvalidAddress
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, ErrInvalidPort
+	}
+
+	return host, port, nil
+}
+
+// contains 检查字符串切片是否包含指定字符串.
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
