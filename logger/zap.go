@@ -1,0 +1,357 @@
+// Package logger 提供结构化日志记录功能.
+package logger
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+// zapLogger zap 日志实现.
+type zapLogger struct {
+	logger  *zap.Logger
+	sugar   *zap.SugaredLogger
+	writers []RotateWriter
+}
+
+// newZapLogger 创建 zap logger.
+func newZapLogger(config *Config) (Logger, error) {
+	level := parseLevel(config.Level)
+	encoder := buildEncoder(config)
+	options := buildOptions(config)
+
+	var writers []RotateWriter
+
+	if config.LevelSeparate && config.needsFileOutput() {
+		return createLevelSeparateLogger(config, level, encoder, options)
+	}
+
+	cores, levelWriters, err := buildCores(config, level, encoder)
+	if err != nil {
+		return nil, err
+	}
+	writers = append(writers, levelWriters...)
+
+	var core zapcore.Core
+	if len(cores) == 1 {
+		core = cores[0]
+	} else {
+		core = zapcore.NewTee(cores...)
+	}
+
+	zapLog := zap.New(core, options...)
+
+	return &zapLogger{
+		logger:  zapLog,
+		sugar:   zapLog.Sugar(),
+		writers: writers,
+	}, nil
+}
+
+// buildOptions 构建 zap 选项.
+func buildOptions(config *Config) []zap.Option {
+	var options []zap.Option
+
+	if config.EnableCaller {
+		options = append(options, zap.AddCaller())
+		if config.CallerSkip > 0 {
+			options = append(options, zap.AddCallerSkip(config.CallerSkip))
+		}
+	}
+
+	if config.EnableStacktrace {
+		options = append(options, zap.AddStacktrace(zapcore.ErrorLevel))
+	}
+
+	return options
+}
+
+// buildCores 构建日志核心.
+func buildCores(config *Config, level zapcore.Level, encoder zapcore.Encoder) ([]zapcore.Core, []RotateWriter, error) {
+	var cores []zapcore.Core
+	var writers []RotateWriter
+
+	// 文件输出
+	if config.needsFileOutput() {
+		fileWriter, err := createFileWriter(config, config.ServiceName)
+		if err != nil {
+			return nil, nil, err
+		}
+		writers = append(writers, fileWriter)
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(fileWriter), level))
+	}
+
+	// 控制台输出
+	if config.shouldOutputToConsole() {
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), level))
+	}
+
+	if len(cores) == 0 {
+		return nil, nil, &ConfigError{Field: "output", Message: "no valid output configured"}
+	}
+
+	return cores, writers, nil
+}
+
+// createFileWriter 创建文件写入器.
+func createFileWriter(config *Config, prefix string) (RotateWriter, error) {
+	if config.RotationEnabled {
+		return NewRotateWriter(
+			config.LogDir,
+			prefix,
+			WithMaxAge(config.MaxAge),
+			WithCompress(config.Compress),
+			WithRotationMode(config.RotationTime),
+		), nil
+	}
+
+	// 静态文件
+	dir := filepath.Join(config.LogDir, prefix)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, &ConfigError{Field: "log_dir", Message: "failed to create log directory: " + err.Error()}
+	}
+
+	logFile := filepath.Join(dir, prefix+".log")
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, &ConfigError{Field: "log_dir", Message: "failed to open log file: " + err.Error()}
+	}
+
+	return newSyncWriter(file), nil
+}
+
+// createLevelSeparateLogger 创建按级别分离的 logger.
+func createLevelSeparateLogger(config *Config, minLevel zapcore.Level, encoder zapcore.Encoder, options []zap.Option) (Logger, error) {
+	levelConfigs := []struct {
+		name  string
+		level zapcore.Level
+	}{
+		{LevelDebug, zapcore.DebugLevel},
+		{LevelInfo, zapcore.InfoLevel},
+		{LevelWarn, zapcore.WarnLevel},
+		{LevelError, zapcore.ErrorLevel},
+		{LevelPanic, zapcore.PanicLevel},
+		{LevelFatal, zapcore.FatalLevel},
+	}
+
+	var cores []zapcore.Core
+	var writers []RotateWriter
+
+	for _, lc := range levelConfigs {
+		if lc.level < minLevel {
+			continue
+		}
+
+		var levelWriters []zapcore.WriteSyncer
+
+		// 文件输出
+		fileWriter, err := createFileWriter(config, lc.name)
+		if err != nil {
+			// 清理已创建的 writers
+			for _, w := range writers {
+				w.Close()
+			}
+			return nil, err
+		}
+		writers = append(writers, fileWriter)
+		levelWriters = append(levelWriters, zapcore.AddSync(fileWriter))
+
+		// 控制台输出
+		if config.shouldOutputToConsole() {
+			levelWriters = append(levelWriters, zapcore.AddSync(os.Stdout))
+		}
+
+		var writeSyncer zapcore.WriteSyncer
+		if len(levelWriters) == 1 {
+			writeSyncer = levelWriters[0]
+		} else {
+			writeSyncer = zapcore.NewMultiWriteSyncer(levelWriters...)
+		}
+
+		// 仅记录当前级别
+		levelEnabler := zap.LevelEnablerFunc(func(target zapcore.Level) func(zapcore.Level) bool {
+			return func(lvl zapcore.Level) bool {
+				return lvl == target
+			}
+		}(lc.level))
+
+		cores = append(cores, zapcore.NewCore(encoder, writeSyncer, levelEnabler))
+	}
+
+	if len(cores) == 0 {
+		return nil, &ConfigError{Field: "level", Message: "no valid log level configured"}
+	}
+
+	zapLog := zap.New(zapcore.NewTee(cores...), options...)
+
+	return &zapLogger{
+		logger:  zapLog,
+		sugar:   zapLog.Sugar(),
+		writers: writers,
+	}, nil
+}
+
+// 基础日志方法实现
+
+func (z *zapLogger) Debug(args ...any) {
+	z.sugar.Debug(args...)
+}
+
+func (z *zapLogger) Debugf(format string, args ...any) {
+	z.sugar.Debugf(format, args...)
+}
+
+func (z *zapLogger) Info(args ...any) {
+	z.sugar.Info(args...)
+}
+
+func (z *zapLogger) Infof(format string, args ...any) {
+	z.sugar.Infof(format, args...)
+}
+
+func (z *zapLogger) Warn(args ...any) {
+	z.sugar.Warn(args...)
+}
+
+func (z *zapLogger) Warnf(format string, args ...any) {
+	z.sugar.Warnf(format, args...)
+}
+
+func (z *zapLogger) Error(args ...any) {
+	z.sugar.Error(args...)
+}
+
+func (z *zapLogger) Errorf(format string, args ...any) {
+	z.sugar.Errorf(format, args...)
+}
+
+func (z *zapLogger) Fatal(args ...any) {
+	z.sugar.Fatal(args...)
+}
+
+func (z *zapLogger) Fatalf(format string, args ...any) {
+	z.sugar.Fatalf(format, args...)
+}
+
+func (z *zapLogger) Panic(args ...any) {
+	z.sugar.Panic(args...)
+}
+
+func (z *zapLogger) Panicf(format string, args ...any) {
+	z.sugar.Panicf(format, args...)
+}
+
+// With 返回带有附加字段的 logger.
+func (z *zapLogger) With(fields ...Field) Logger {
+	zapFields := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zapFields[i] = zap.Any(f.Key, f.Value)
+	}
+
+	newLogger := z.logger.With(zapFields...)
+	return &zapLogger{
+		logger:  newLogger,
+		sugar:   newLogger.Sugar(),
+		writers: z.writers,
+	}
+}
+
+// WithContext 返回带有上下文的 logger.
+func (z *zapLogger) WithContext(ctx context.Context) Logger {
+	// 可扩展：从 context 中提取 trace_id, request_id 等
+	if ctx == nil {
+		return z
+	}
+
+	var fields []Field
+
+	// 提取 trace_id
+	if traceID := ctx.Value(TraceIDKey); traceID != nil {
+		fields = append(fields, Field{Key: string(TraceIDKey), Value: traceID})
+	}
+
+	// 提取 request_id
+	if requestID := ctx.Value(RequestIDKey); requestID != nil {
+		fields = append(fields, Field{Key: string(RequestIDKey), Value: requestID})
+	}
+
+	if len(fields) == 0 {
+		return z
+	}
+
+	return z.With(fields...)
+}
+
+// Sync 同步日志缓冲区.
+func (z *zapLogger) Sync() error {
+	return z.logger.Sync()
+}
+
+// Close 关闭 logger 并释放资源.
+func (z *zapLogger) Close() error {
+	// 先同步
+	if err := z.logger.Sync(); err != nil {
+		// 忽略 stdout/stderr 的 sync 错误
+		// https://github.com/uber-go/zap/issues/328
+	}
+
+	// 关闭所有写入器
+	for _, w := range z.writers {
+		if err := w.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// 便捷字段构造函数
+
+// String 创建字符串字段.
+func String(key, value string) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int 创建整数字段.
+func Int(key string, value int) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int64 创建 int64 字段.
+func Int64(key string, value int64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Float64 创建 float64 字段.
+func Float64(key string, value float64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Bool 创建布尔字段.
+func Bool(key string, value bool) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Time 创建时间字段.
+func Time(key string, value time.Time) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Duration 创建持续时间字段.
+func Duration(key string, value time.Duration) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Err 创建错误字段.
+func Err(err error) Field {
+	return Field{Key: "error", Value: err}
+}
+
+// Any 创建任意类型字段.
+func Any(key string, value any) Field {
+	return Field{Key: key, Value: value}
+}
