@@ -49,7 +49,7 @@ type Client struct {
 	// Metrics 相关（使用 metrics 包的 PrometheusCollector）
 	metrics *messagingMetrics
 
-	// Tracing 相关（使用 tracing 包初始化的全局 TracerProvider）
+	// Tracing 相关（使用 trace 包初始化的全局 TracerProvider）
 	tracer *messagingTracer
 
 	// sarama 客户端（用于健康检查）
@@ -110,13 +110,13 @@ func WithMetrics(collector *metrics.PrometheusCollector) ClientOption {
 
 // WithTracing 启用链路追踪.
 //
-// 使用 tracing 包初始化的全局 TracerProvider，与 HTTP/gRPC 追踪统一管理.
-// 需要先调用 tracing.NewTracer 初始化全局 TracerProvider.
+// 使用 trace 包初始化的全局 TracerProvider，与 HTTP/gRPC 追踪统一管理.
+// 需要先调用 trace.NewTracer 初始化全局 TracerProvider.
 //
 // 示例:
 //
 //	// 初始化全局 TracerProvider
-//	tp, _ := tracing.NewTracer(cfg, "my-service", "1.0.0")
+//	tp, _ := trace.NewTracer(cfg, "my-service", "1.0.0")
 //	defer tp.Shutdown(context.Background())
 //
 //	client, _ := messaging.NewClient(
@@ -192,7 +192,7 @@ func (c *Client) Producer(opts ...ProducerOption) (*KafkaProducer, error) {
 		producer.metrics = c.metrics
 	}
 
-	// 设置 tracing
+	// 设置 trace
 	if c.tracer != nil {
 		producer.tracer = c.tracer
 	}
@@ -227,7 +227,7 @@ func (c *Client) Consumer(groupID string, opts ...ConsumerOption) (*KafkaConsume
 		consumer.metrics = c.metrics
 	}
 
-	// 设置 tracing
+	// 设置 trace
 	if c.tracer != nil {
 		consumer.tracer = c.tracer
 	}

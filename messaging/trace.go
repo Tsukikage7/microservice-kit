@@ -13,7 +13,7 @@ import (
 // messagingTracer 消息队列追踪器.
 //
 // 使用全局 OpenTelemetry TracerProvider，与 HTTP/gRPC 追踪统一管理.
-// 需要先通过 tracing.NewTracer 初始化全局 TracerProvider.
+// 需要先通过 trace.NewTracer 初始化全局 TracerProvider.
 type messagingTracer struct {
 	tracer     trace.Tracer
 	propagator propagation.TextMapPropagator
