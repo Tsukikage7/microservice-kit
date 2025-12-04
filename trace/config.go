@@ -1,5 +1,5 @@
-// Package tracing 提供分布式链路追踪功能.
-package tracing
+// Package trace 提供分布式链路追踪功能.
+package trace
 
 // TracingConfig 链路追踪配置.
 type TracingConfig struct {
