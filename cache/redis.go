@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -47,7 +46,7 @@ func NewRedisCache(config *Config, log logger.Logger) (Cache, error) {
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Errorf("[cache] Redis 连接失败: addr=%s, err=%v", config.Addr, err)
-		return nil, fmt.Errorf("redis 连接失败: %w", err)
+		return nil, ErrConnect
 	}
 
 	log.Debugf("[cache] redis connected: addr=%s, db=%d", config.Addr, config.DB)
@@ -283,7 +282,7 @@ func (r *redisCache) serialize(value any) (string, error) {
 	default:
 		data, err := json.Marshal(value)
 		if err != nil {
-			return "", fmt.Errorf("序列化值失败: %w", err)
+			return "", ErrSerialize
 		}
 		return string(data), nil
 	}

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -19,7 +18,7 @@ func Load[T any](configPath string, opts ...Option) (*T, error) {
 
 	// 检查文件是否存在
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("%w: %s", ErrFileNotFound, configPath)
+		return nil, ErrFileNotFound
 	}
 
 	v := viper.New()
@@ -37,7 +36,7 @@ func Load[T any](configPath string, opts ...Option) (*T, error) {
 
 	// 读取配置文件
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, ErrReadConfig
 	}
 
 	// 解析并验证
@@ -68,7 +67,7 @@ func LoadFromBytes[T any](data []byte, configType string, opts ...Option) (*T, e
 
 	// 从字节读取
 	if err := v.ReadConfig(strings.NewReader(string(data))); err != nil {
-		return nil, fmt.Errorf("读取配置失败: %w", err)
+		return nil, ErrReadConfig
 	}
 
 	// 解析并验证
@@ -95,7 +94,7 @@ func LoadWithSearch[T any](configName string, searchPaths []string, opts ...Opti
 
 	// 读取配置
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, ErrReadConfig
 	}
 
 	// 解析并验证
@@ -129,13 +128,13 @@ func applyOptions(v *viper.Viper, options *Options) {
 func unmarshalAndValidate[T any](v *viper.Viper) (*T, error) {
 	config := new(T)
 	if err := v.Unmarshal(config); err != nil {
-		return nil, fmt.Errorf("解析配置失败: %w", err)
+		return nil, ErrUnmarshal
 	}
 
 	// 如果实现了 Validatable 接口，进行验证
 	if validator, ok := any(config).(Validatable); ok {
 		if err := validator.Validate(); err != nil {
-			return nil, fmt.Errorf("配置验证失败: %w", err)
+			return nil, ErrValidation
 		}
 	}
 

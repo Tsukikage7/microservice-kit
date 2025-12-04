@@ -217,7 +217,7 @@ func (m *memoryCache) IncrementBy(ctx context.Context, key string, value int64) 
 
 	if item, ok := m.data[key]; ok && !item.isExpired() {
 		if _, err := fmt.Sscanf(item.value, "%d", &current); err != nil {
-			return 0, fmt.Errorf("值不是整数")
+			return 0, ErrNotInteger
 		}
 	}
 
@@ -363,7 +363,7 @@ func (m *memoryCache) serialize(value any) (string, error) {
 	default:
 		data, err := json.Marshal(value)
 		if err != nil {
-			return "", fmt.Errorf("序列化值失败: %w", err)
+			return "", ErrSerialize
 		}
 		return string(data), nil
 	}

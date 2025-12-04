@@ -3,7 +3,6 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -20,16 +19,6 @@ const (
 	DefaultReadTimeout  = 3 * time.Second
 	DefaultWriteTimeout = 3 * time.Second
 	DefaultMaxRetries   = 3
-)
-
-// 常见错误.
-var (
-	ErrNotFound    = errors.New("缓存键不存在")
-	ErrLockNotHeld = errors.New("锁未持有或已过期")
-	ErrNilConfig   = errors.New("缓存配置为空")
-	ErrEmptyAddr   = errors.New("缓存地址为空")
-	ErrUnsupported = errors.New("不支持的缓存类型")
-	ErrNilLogger   = errors.New("日志记录器为空")
 )
 
 // Cache 缓存接口.

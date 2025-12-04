@@ -143,13 +143,13 @@ func (w *rotateWriter) rotate() {
 func (w *rotateWriter) openFile() error {
 	dir := filepath.Join(w.baseDir, w.prefix)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
+		return ErrCreateDir
 	}
 
 	filename := w.buildFilename()
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
+		return ErrOpenFile
 	}
 
 	w.file = file

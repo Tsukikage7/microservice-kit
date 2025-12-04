@@ -2,16 +2,8 @@
 package config
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
-)
-
-// 常见错误.
-var (
-	ErrNilConfig    = errors.New("配置为空")
-	ErrFileNotFound = errors.New("配置文件不存在")
-	ErrInvalidType  = errors.New("不支持的配置文件类型")
 )
 
 // Validatable 可验证的配置接口.

@@ -150,7 +150,7 @@ func (s *ConfigTestSuite) TestLoad_InvalidYAML() {
 
 	_, err := Load[TestConfig](path)
 	s.Error(err)
-	s.Contains(err.Error(), "读取配置文件失败")
+	s.ErrorIs(err, ErrReadConfig)
 }
 
 func (s *ConfigTestSuite) TestLoad_WithDefaults() {
