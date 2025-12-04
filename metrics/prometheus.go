@@ -206,8 +206,12 @@ func (c *PrometheusCollector) UpdateMemoryUsage(bytes int64) {
 	c.memoryUsage.Set(float64(bytes))
 }
 
-// IncrementCounter 增加自定义计数器.
-func (c *PrometheusCollector) IncrementCounter(name string, labels map[string]string) {
+// Counter 增加计数器.
+//
+// 使用示例:
+//
+//	collector.Counter("payment_failed_total", map[string]string{"channel": "alipay", "reason": "timeout"})
+func (c *PrometheusCollector) Counter(name string, labels map[string]string) {
 	c.mu.RLock()
 	counter, exists := c.counters[name]
 	c.mu.RUnlock()
@@ -246,8 +250,12 @@ func (c *PrometheusCollector) IncrementCounter(name string, labels map[string]st
 	}
 }
 
-// ObserveHistogram 观察自定义直方图.
-func (c *PrometheusCollector) ObserveHistogram(name string, value float64, labels map[string]string) {
+// Histogram 观察自定义直方图.
+//
+// 使用示例:
+//
+//	collector.Histogram("payment_duration_seconds", 0.5, map[string]string{"channel": "alipay"})
+func (c *PrometheusCollector) Histogram(name string, value float64, labels map[string]string) {
 	c.mu.RLock()
 	histogram, exists := c.histograms[name]
 	c.mu.RUnlock()
@@ -287,8 +295,12 @@ func (c *PrometheusCollector) ObserveHistogram(name string, value float64, label
 	}
 }
 
-// SetGauge 设置自定义仪表盘.
-func (c *PrometheusCollector) SetGauge(name string, value float64, labels map[string]string) {
+// Gauge 设置自定义仪表盘.
+//
+// 使用示例:
+//
+//	collector.Gauge("pending_orders", 42, map[string]string{"status": "unpaid"})
+func (c *PrometheusCollector) Gauge(name string, value float64, labels map[string]string) {
 	c.mu.RLock()
 	gauge, exists := c.gauges[name]
 	c.mu.RUnlock()

@@ -173,9 +173,8 @@ func TestPrometheusCollector_UpdateMemoryUsage(t *testing.T) {
 	assert.Contains(t, bodyStr, "test_system_memory_usage_bytes")
 }
 
-func TestPrometheusCollector_IncrementCounter(t *testing.T) {
+func TestPrometheusCollector_Counter(t *testing.T) {
 	cfg := &Config{
-		
 		Namespace: "test",
 	}
 
@@ -184,8 +183,8 @@ func TestPrometheusCollector_IncrementCounter(t *testing.T) {
 
 	// 创建自定义计数器
 	assert.NotPanics(t, func() {
-		c.IncrementCounter("custom_events", map[string]string{"type": "click"})
-		c.IncrementCounter("custom_events", map[string]string{"type": "click"})
+		c.Counter("custom_events", map[string]string{"type": "click"})
+		c.Counter("custom_events", map[string]string{"type": "click"})
 	})
 
 	// 验证指标被记录
@@ -200,9 +199,8 @@ func TestPrometheusCollector_IncrementCounter(t *testing.T) {
 	assert.Contains(t, bodyStr, "custom_events")
 }
 
-func TestPrometheusCollector_ObserveHistogram(t *testing.T) {
+func TestPrometheusCollector_Histogram(t *testing.T) {
 	cfg := &Config{
-		
 		Namespace: "test",
 	}
 
@@ -210,7 +208,7 @@ func TestPrometheusCollector_ObserveHistogram(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotPanics(t, func() {
-		c.ObserveHistogram("request_latency", 0.5, map[string]string{"endpoint": "/api"})
+		c.Histogram("request_latency", 0.5, map[string]string{"endpoint": "/api"})
 	})
 
 	// 验证指标被记录
@@ -225,9 +223,8 @@ func TestPrometheusCollector_ObserveHistogram(t *testing.T) {
 	assert.Contains(t, bodyStr, "request_latency")
 }
 
-func TestPrometheusCollector_SetGauge(t *testing.T) {
+func TestPrometheusCollector_Gauge(t *testing.T) {
 	cfg := &Config{
-		
 		Namespace: "test",
 	}
 
@@ -235,7 +232,7 @@ func TestPrometheusCollector_SetGauge(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotPanics(t, func() {
-		c.SetGauge("active_connections", 50, map[string]string{"server": "main"})
+		c.Gauge("active_connections", 50, map[string]string{"server": "main"})
 	})
 
 	// 验证指标被记录
@@ -316,9 +313,9 @@ func TestPrometheusCollector_ConcurrentAccess(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				c.RecordHTTPRequest("GET", "/api", "200", time.Millisecond, 100, 200)
 				c.RecordGRPCRequest("/test/Method", "svc", "OK", time.Millisecond)
-				c.IncrementCounter("concurrent_counter", map[string]string{"worker": "test"})
-				c.ObserveHistogram("concurrent_histogram", 0.1, map[string]string{"worker": "test"})
-				c.SetGauge("concurrent_gauge", float64(j), map[string]string{"worker": "test"})
+				c.Counter("concurrent_counter", map[string]string{"worker": "test"})
+				c.Histogram("concurrent_histogram", 0.1, map[string]string{"worker": "test"})
+				c.Gauge("concurrent_gauge", float64(j), map[string]string{"worker": "test"})
 			}
 			done <- true
 		}(i)

@@ -143,28 +143,28 @@ func (c *Collector) UpdateMemoryUsage(bytes int64)
 
 ### 自定义指标
 
-#### IncrementCounter
+#### Counter
 
-增加自定义计数器。
+增加计数器（自动注册）。
 
 ```go
-func (c *Collector) IncrementCounter(name string, labels map[string]string)
+func (c *Collector) Counter(name string, labels map[string]string)
 ```
 
-#### ObserveHistogram
+#### Histogram
 
-观察自定义直方图。
+观察直方图值（自动注册）。
 
 ```go
-func (c *Collector) ObserveHistogram(name string, value float64, labels map[string]string)
+func (c *Collector) Histogram(name string, value float64, labels map[string]string)
 ```
 
-#### SetGauge
+#### Gauge
 
-设置自定义仪表盘。
+设置仪表盘值（自动注册）。
 
 ```go
-func (c *Collector) SetGauge(name string, value float64, labels map[string]string)
+func (c *Collector) Gauge(name string, value float64, labels map[string]string)
 ```
 
 ### Handler
@@ -319,26 +319,65 @@ func main() {
 }
 ```
 
-### 自定义指标
+### 业务指标（支付示例）
 
 ```go
-// 计数器：统计事件次数
-collector.IncrementCounter("orders_created", map[string]string{
-    "type":   "standard",
-    "region": "cn-east",
-})
+func (s *PaymentService) Pay(ctx context.Context, req *PaymentRequest) error {
+    start := time.Now()
 
-// 直方图：记录延迟分布
-collector.ObserveHistogram("db_query_duration_seconds", 0.05, map[string]string{
-    "query": "select_users",
-    "db":    "primary",
-})
+    err := s.doPayment(req)
 
-// 仪表盘：记录当前值
-collector.SetGauge("active_connections", 42, map[string]string{
-    "server": "main",
-    "pool":   "default",
-})
+    // 记录耗时
+    s.collector.Histogram("payment_duration_seconds", time.Since(start).Seconds(),
+        map[string]string{"channel": req.Channel})
+
+    if err != nil {
+        // 支付失败
+        s.collector.Counter("payment_failed_total",
+            map[string]string{"channel": req.Channel, "reason": errorReason(err)})
+        return err
+    }
+
+    // 支付成功
+    s.collector.Counter("payment_success_total",
+        map[string]string{"channel": req.Channel})
+    s.collector.Histogram("payment_amount", req.Amount,
+        map[string]string{"channel": req.Channel})
+
+    return nil
+}
+
+// 更新待处理支付数
+func (s *PaymentService) UpdatePendingCount(channel string, count int) {
+    s.collector.Gauge("payment_pending", float64(count),
+        map[string]string{"channel": channel})
+}
+```
+
+**Prometheus 告警规则示例：**
+
+```yaml
+groups:
+  - name: payment-alerts
+    rules:
+      - alert: PaymentFailureRateHigh
+        expr: |
+          sum(rate(app_payment_failed_total[5m]))
+          / (sum(rate(app_payment_success_total[5m])) + sum(rate(app_payment_failed_total[5m]))) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "支付失败率超过 10%"
+
+      - alert: PaymentTimeoutHigh
+        expr: |
+          sum(rate(app_payment_failed_total{reason="timeout"}[5m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "支付超时次数过多"
 ```
 
 ### Panic 恢复中间件（需手动实现）
@@ -397,6 +436,6 @@ metrics:
 
 - **Prometheus 标准**: 完全兼容 Prometheus 格式
 - **中间件/拦截器**: HTTP 和 gRPC 自动采集，业务代码零侵入
-- **自定义指标**: 支持动态创建 Counter、Histogram、Gauge
+- **自定义指标**: 支持动态创建 Counter、Histogram、Gauge（自动注册）
 - **线程安全**: 并发安全的指标操作
 - **独立注册表**: 使用独立注册表，避免全局冲突
