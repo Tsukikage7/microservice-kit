@@ -1,0 +1,137 @@
+package tracing
+
+import (
+	"context"
+	"net/http"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// HTTPMiddleware 返回 HTTP 链路追踪中间件.
+//
+// 使用示例:
+//
+//	mux := http.NewServeMux()
+//	mux.HandleFunc("/api/users", handleUsers)
+//	handler := tracing.HTTPMiddleware("my-service")(mux)
+//	http.ListenAndServe(":8080", handler)
+func HTTPMiddleware(serviceName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 从请求头提取上下文
+			ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+
+			tracer := otel.Tracer(serviceName)
+			spanName := r.Method + " " + r.URL.Path
+
+			ctx, span := tracer.Start(ctx, spanName,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(
+					semconv.HTTPRequestMethodKey.String(r.Method),
+					semconv.URLFull(r.URL.String()),
+					semconv.URLPath(r.URL.Path),
+					semconv.ServerAddress(r.Host),
+					semconv.UserAgentOriginal(r.UserAgent()),
+					semconv.URLScheme(r.URL.Scheme),
+				),
+			)
+			defer span.End()
+
+			// 使用包装的 ResponseWriter 捕获状态码
+			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+			// 执行下一个处理器
+			next.ServeHTTP(rw, r.WithContext(ctx))
+
+			// 记录响应状态码
+			span.SetAttributes(semconv.HTTPResponseStatusCode(rw.statusCode))
+
+			// 根据状态码设置 span 状态
+			if rw.statusCode >= 400 {
+				span.SetStatus(codes.Error, http.StatusText(rw.statusCode))
+			}
+		})
+	}
+}
+
+// responseWriter 包装 http.ResponseWriter 以捕获状态码.
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+// SpanFromContext 从 context 获取当前 span.
+func SpanFromContext(ctx context.Context) trace.Span {
+	return trace.SpanFromContext(ctx)
+}
+
+// StartSpan 在当前 context 中创建新的 span.
+//
+// 使用示例:
+//
+//	ctx, span := tracing.StartSpan(ctx, "my-service", "process-order")
+//	defer span.End()
+func StartSpan(ctx context.Context, tracerName, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	tracer := otel.Tracer(tracerName)
+	return tracer.Start(ctx, spanName, opts...)
+}
+
+// AddSpanEvent 向当前 span 添加事件.
+func AddSpanEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) {
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent(name, trace.WithAttributes(attrs...))
+}
+
+// SetSpanError 设置 span 错误状态.
+func SetSpanError(ctx context.Context, err error) {
+	span := trace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
+
+// SetSpanAttributes 设置 span 属性.
+func SetSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attrs...)
+}
+
+// InjectHTTPHeaders 将追踪信息注入到 HTTP 请求头.
+//
+// 用于向下游服务传播追踪上下文.
+//
+// 使用示例:
+//
+//	req, _ := http.NewRequestWithContext(ctx, "GET", "http://service-b/api", nil)
+//	tracing.InjectHTTPHeaders(ctx, req)
+//	resp, err := client.Do(req)
+func InjectHTTPHeaders(ctx context.Context, req *http.Request) {
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+}
+
+// TraceID 从 context 获取 trace ID.
+func TraceID(ctx context.Context) string {
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().HasTraceID() {
+		return span.SpanContext().TraceID().String()
+	}
+	return ""
+}
+
+// SpanID 从 context 获取 span ID.
+func SpanID(ctx context.Context) string {
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().HasSpanID() {
+		return span.SpanContext().SpanID().String()
+	}
+	return ""
+}
