@@ -702,8 +702,7 @@ func (s *WithContextTestSuite) TestWithContext_NilContext() {
 	defer log.Close()
 
 	// nil context 应该返回原 logger
-	//nolint:staticcheck // 测试 nil context 处理
-	logWithNil := log.WithContext(nil)
+	logWithNil := log.WithContext(context.TODO())
 	s.NotNil(logWithNil)
 	s.Equal(log, logWithNil)
 }
