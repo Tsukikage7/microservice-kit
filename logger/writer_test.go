@@ -212,6 +212,228 @@ func (s *RotateWriterTestSuite) TestIsLogFile() {
 	}
 }
 
+func (s *RotateWriterTestSuite) TestRotate() {
+	writer := NewRotateWriter(s.tmpDir, "rotate-test", WithMaxAge(1))
+	defer writer.Close()
+
+	// 写入数据创建文件
+	_, err := writer.Write([]byte("test\n"))
+	s.NoError(err)
+
+	// 获取内部 rotateWriter
+	rw := writer.(*rotateWriter)
+
+	// 修改 currentDay 触发轮转
+	rw.mu.Lock()
+	rw.currentDay = "2020-01-01"
+	rw.mu.Unlock()
+
+	// 再次写入触发轮转
+	_, err = writer.Write([]byte("after rotate\n"))
+	s.NoError(err)
+
+	// 验证新文件创建
+	logDir := filepath.Join(s.tmpDir, "rotate-test")
+	files, err := os.ReadDir(logDir)
+	s.NoError(err)
+	s.NotEmpty(files)
+}
+
+func (s *RotateWriterTestSuite) TestCleanupOldLogs() {
+	writer := NewRotateWriter(s.tmpDir, "cleanup-test", WithMaxAge(1))
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 创建旧日志文件
+	logDir := filepath.Join(s.tmpDir, "cleanup-test")
+	err := os.MkdirAll(logDir, 0o755)
+	s.Require().NoError(err)
+
+	// 创建一个"旧"日志文件
+	oldLogFile := filepath.Join(logDir, "cleanup-test_2020-01-01.log")
+	err = os.WriteFile(oldLogFile, []byte("old log"), 0o644)
+	s.Require().NoError(err)
+
+	// 修改文件时间为很久以前
+	oldTime := time.Now().Add(-30 * 24 * time.Hour)
+	err = os.Chtimes(oldLogFile, oldTime, oldTime)
+	s.Require().NoError(err)
+
+	// 执行清理
+	rw.cleanupOldLogs()
+
+	// 验证旧文件被删除
+	_, err = os.Stat(oldLogFile)
+	s.True(os.IsNotExist(err), "old log file should be deleted")
+}
+
+func (s *RotateWriterTestSuite) TestCleanupOldLogs_WithCompress() {
+	writer := NewRotateWriter(s.tmpDir, "compress-test", WithMaxAge(1), WithCompress(true))
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 创建日志目录
+	logDir := filepath.Join(s.tmpDir, "compress-test")
+	err := os.MkdirAll(logDir, 0o755)
+	s.Require().NoError(err)
+
+	// 创建一个"旧"日志文件
+	oldLogFile := filepath.Join(logDir, "compress-test_2020-01-01.log")
+	err = os.WriteFile(oldLogFile, []byte("old log content"), 0o644)
+	s.Require().NoError(err)
+
+	// 修改文件时间为超过 maxAge
+	oldTime := time.Now().Add(-2 * 24 * time.Hour)
+	err = os.Chtimes(oldLogFile, oldTime, oldTime)
+	s.Require().NoError(err)
+
+	// 执行清理（应该压缩文件）
+	rw.cleanupOldLogs()
+
+	// 验证压缩文件被创建
+	_, err = os.Stat(oldLogFile + ".gz")
+	s.NoError(err, "compressed file should exist")
+
+	// 验证原文件被删除
+	_, err = os.Stat(oldLogFile)
+	s.True(os.IsNotExist(err), "original file should be deleted after compression")
+}
+
+func (s *RotateWriterTestSuite) TestCleanupOldLogs_SkipDirectories() {
+	writer := NewRotateWriter(s.tmpDir, "skipdir-test", WithMaxAge(1))
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 创建日志目录
+	logDir := filepath.Join(s.tmpDir, "skipdir-test")
+	err := os.MkdirAll(logDir, 0o755)
+	s.Require().NoError(err)
+
+	// 创建子目录（应该被跳过）
+	subDir := filepath.Join(logDir, "skipdir-test_2020-01-01.log")
+	err = os.MkdirAll(subDir, 0o755)
+	s.Require().NoError(err)
+
+	// 执行清理（不应该报错）
+	s.NotPanics(func() {
+		rw.cleanupOldLogs()
+	})
+
+	// 子目录应该仍然存在
+	_, err = os.Stat(subDir)
+	s.NoError(err, "subdirectory should still exist")
+}
+
+func (s *RotateWriterTestSuite) TestCleanupOldLogs_NoMaxAge() {
+	writer := NewRotateWriter(s.tmpDir, "nomaxage-test")
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 不设置 maxAge，cleanupOldLogs 应该直接返回
+	s.NotPanics(func() {
+		rw.cleanupOldLogs()
+	})
+}
+
+func (s *RotateWriterTestSuite) TestCleanupOldLogs_NonExistentDir() {
+	rw := &rotateWriter{
+		baseDir: "/nonexistent/path",
+		prefix:  "test",
+		maxAge:  24 * time.Hour,
+	}
+
+	// 不应该 panic
+	s.NotPanics(func() {
+		rw.cleanupOldLogs()
+	})
+}
+
+func (s *RotateWriterTestSuite) TestCompressFile() {
+	writer := NewRotateWriter(s.tmpDir, "compress-func-test")
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 创建测试文件
+	testFile := filepath.Join(s.tmpDir, "test-compress.log")
+	testContent := "test content for compression"
+	err := os.WriteFile(testFile, []byte(testContent), 0o644)
+	s.Require().NoError(err)
+
+	// 压缩文件
+	rw.compressFile(testFile)
+
+	// 验证压缩文件存在
+	_, err = os.Stat(testFile + ".gz")
+	s.NoError(err, "compressed file should exist")
+
+	// 验证原文件被删除
+	_, err = os.Stat(testFile)
+	s.True(os.IsNotExist(err), "original file should be deleted")
+}
+
+func (s *RotateWriterTestSuite) TestCompressFile_NonExistent() {
+	rw := &rotateWriter{}
+
+	// 压缩不存在的文件不应该 panic
+	s.NotPanics(func() {
+		rw.compressFile("/nonexistent/file.log")
+	})
+}
+
+func (s *RotateWriterTestSuite) TestShouldRotate_Hourly() {
+	writer := NewRotateWriter(s.tmpDir, "hourly-rotate", WithRotationMode(RotationHourly))
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 写入数据创建文件
+	_, err := writer.Write([]byte("test\n"))
+	s.NoError(err)
+
+	// 不应该立即需要轮转
+	rw.mu.Lock()
+	shouldRotate := rw.shouldRotate()
+	rw.mu.Unlock()
+	s.False(shouldRotate)
+}
+
+func (s *RotateWriterTestSuite) TestShouldRotate_DayChange() {
+	writer := NewRotateWriter(s.tmpDir, "day-rotate")
+	defer writer.Close()
+
+	rw := writer.(*rotateWriter)
+
+	// 修改 currentDay 为昨天
+	rw.mu.Lock()
+	rw.currentDay = time.Now().Add(-24 * time.Hour).Format("2006-01-02")
+	shouldRotate := rw.shouldRotate()
+	rw.mu.Unlock()
+
+	s.True(shouldRotate)
+}
+
+func (s *RotateWriterTestSuite) TestBuildFilename() {
+	rw := &rotateWriter{
+		baseDir:      s.tmpDir,
+		prefix:       "test",
+		currentDay:   "2024-01-15",
+		rotationMode: RotationDaily,
+	}
+
+	filename := rw.buildFilename()
+	s.Contains(filename, "test_2024-01-15.log")
+
+	rw.rotationMode = RotationHourly
+	filename = rw.buildFilename()
+	s.Contains(filename, "test_2024-01-15_")
+	s.Contains(filename, ".log")
+}
+
 // SyncWriterTestSuite 同步写入器测试套件.
 type SyncWriterTestSuite struct {
 	suite.Suite

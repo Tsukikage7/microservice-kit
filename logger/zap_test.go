@@ -486,3 +486,301 @@ func (s *FileWriterTestSuite) TestCreateFileWriter_StaticFile() {
 	_, err = os.Stat(staticFile)
 	s.NoError(err)
 }
+
+func (s *FileWriterTestSuite) TestCreateFileWriter_InvalidDir() {
+	config := &Config{
+		LogDir:          "/nonexistent/readonly/path",
+		RotationEnabled: false,
+	}
+
+	writer, err := createFileWriter(config, "test")
+	s.Error(err)
+	s.Nil(writer)
+}
+
+// PanicLoggerTestSuite Panic 和 Fatal 日志测试套件.
+type PanicLoggerTestSuite struct {
+	suite.Suite
+	tmpDir string
+}
+
+func TestPanicLoggerSuite(t *testing.T) {
+	suite.Run(t, new(PanicLoggerTestSuite))
+}
+
+func (s *PanicLoggerTestSuite) SetupTest() {
+	s.tmpDir = s.T().TempDir()
+}
+
+func (s *PanicLoggerTestSuite) TestPanic() {
+	log, err := NewLogger(NewDevConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	// Panic 应该触发 panic
+	s.Panics(func() {
+		log.Panic("test panic")
+	})
+}
+
+func (s *PanicLoggerTestSuite) TestPanicf() {
+	log, err := NewLogger(NewDevConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	// Panicf 应该触发 panic
+	s.Panics(func() {
+		log.Panicf("test panic %s", "formatted")
+	})
+}
+
+// LevelSeparateTestSuite 级别分离日志测试套件.
+type LevelSeparateTestSuite struct {
+	suite.Suite
+	tmpDir string
+}
+
+func TestLevelSeparateSuite(t *testing.T) {
+	suite.Run(t, new(LevelSeparateTestSuite))
+}
+
+func (s *LevelSeparateTestSuite) SetupTest() {
+	s.tmpDir = s.T().TempDir()
+}
+
+func (s *LevelSeparateTestSuite) TestLevelSeparate_WithHighMinLevel() {
+	config := &Config{
+		Level:           LevelError, // 只记录 error 及以上
+		Format:          FormatJSON,
+		Output:          OutputFile,
+		LogDir:          s.tmpDir,
+		LevelSeparate:   true,
+		RotationEnabled: true,
+	}
+	config.ApplyDefaults()
+
+	log, err := newZapLogger(config)
+	s.Require().NoError(err)
+	defer log.Close()
+
+	log.Error("error message")
+	log.Sync()
+
+	// 只有 error 目录应该存在
+	errorDir := filepath.Join(s.tmpDir, "error")
+	_, err = os.Stat(errorDir)
+	s.NoError(err)
+}
+
+func (s *LevelSeparateTestSuite) TestLevelSeparate_WithConsoleOutput() {
+	config := &Config{
+		Level:           LevelInfo,
+		Format:          FormatJSON,
+		Output:          OutputBoth,
+		LogDir:          s.tmpDir,
+		LevelSeparate:   true,
+		RotationEnabled: true,
+		ConsoleEnabled:  true,
+	}
+	config.ApplyDefaults()
+
+	log, err := newZapLogger(config)
+	s.Require().NoError(err)
+	defer log.Close()
+
+	log.Info("info with console")
+	log.Sync()
+}
+
+// BuildCoresTestSuite buildCores 测试套件.
+type BuildCoresTestSuite struct {
+	suite.Suite
+	tmpDir string
+}
+
+func TestBuildCoresSuite(t *testing.T) {
+	suite.Run(t, new(BuildCoresTestSuite))
+}
+
+func (s *BuildCoresTestSuite) SetupTest() {
+	s.tmpDir = s.T().TempDir()
+}
+
+func (s *BuildCoresTestSuite) TestBuildCores_FileOnly() {
+	config := &Config{
+		Level:           LevelInfo,
+		Format:          FormatJSON,
+		Output:          OutputFile,
+		LogDir:          s.tmpDir,
+		ServiceName:     "test",
+		RotationEnabled: true,
+	}
+	config.ApplyDefaults()
+
+	encoder := buildEncoder(config)
+	cores, writers, err := buildCores(config, parseLevel(config.Level), encoder)
+
+	s.NoError(err)
+	s.Len(cores, 1)
+	s.Len(writers, 1)
+
+	for _, w := range writers {
+		w.Close()
+	}
+}
+
+func (s *BuildCoresTestSuite) TestBuildCores_ConsoleOnly() {
+	config := &Config{
+		Level:  LevelInfo,
+		Format: FormatConsole,
+		Output: OutputConsole,
+	}
+	config.ApplyDefaults()
+
+	encoder := buildEncoder(config)
+	cores, writers, err := buildCores(config, parseLevel(config.Level), encoder)
+
+	s.NoError(err)
+	s.Len(cores, 1)
+	s.Empty(writers)
+}
+
+func (s *BuildCoresTestSuite) TestBuildCores_BothOutput() {
+	config := &Config{
+		Level:           LevelInfo,
+		Format:          FormatJSON,
+		Output:          OutputBoth,
+		LogDir:          s.tmpDir,
+		ServiceName:     "test",
+		RotationEnabled: true,
+	}
+	config.ApplyDefaults()
+
+	encoder := buildEncoder(config)
+	cores, writers, err := buildCores(config, parseLevel(config.Level), encoder)
+
+	s.NoError(err)
+	s.Len(cores, 2)
+	s.Len(writers, 1)
+
+	for _, w := range writers {
+		w.Close()
+	}
+}
+
+func (s *BuildCoresTestSuite) TestBuildCores_InvalidFileDir() {
+	config := &Config{
+		Level:           LevelInfo,
+		Format:          FormatJSON,
+		Output:          OutputFile,
+		LogDir:          "/nonexistent/readonly/path",
+		ServiceName:     "test",
+		RotationEnabled: false,
+	}
+	config.ApplyDefaults()
+
+	encoder := buildEncoder(config)
+	cores, writers, err := buildCores(config, parseLevel(config.Level), encoder)
+
+	s.Error(err)
+	s.Nil(cores)
+	s.Nil(writers)
+}
+
+// WithContextTestSuite WithContext 测试套件.
+type WithContextTestSuite struct {
+	suite.Suite
+}
+
+func TestWithContextSuite(t *testing.T) {
+	suite.Run(t, new(WithContextTestSuite))
+}
+
+func (s *WithContextTestSuite) TestWithContext_NilContext() {
+	log, err := NewLogger(DefaultConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	// nil context 应该返回原 logger
+	//nolint:staticcheck // 测试 nil context 处理
+	logWithNil := log.WithContext(nil)
+	s.NotNil(logWithNil)
+	s.Equal(log, logWithNil)
+}
+
+func (s *WithContextTestSuite) TestWithContext_OnlyTraceID() {
+	log, err := NewLogger(DefaultConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	ctx := context.WithValue(context.Background(), TraceIDKey, "trace-only")
+	logWithTrace := log.WithContext(ctx)
+	s.NotNil(logWithTrace)
+	s.NotEqual(log, logWithTrace)
+}
+
+func (s *WithContextTestSuite) TestWithContext_OnlyRequestID() {
+	log, err := NewLogger(DefaultConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "request-only")
+	logWithRequest := log.WithContext(ctx)
+	s.NotNil(logWithRequest)
+	s.NotEqual(log, logWithRequest)
+}
+
+// CloseTestSuite Close 测试套件.
+type CloseTestSuite struct {
+	suite.Suite
+	tmpDir string
+}
+
+func TestCloseSuite(t *testing.T) {
+	suite.Run(t, new(CloseTestSuite))
+}
+
+func (s *CloseTestSuite) SetupTest() {
+	s.tmpDir = s.T().TempDir()
+}
+
+func (s *CloseTestSuite) TestClose_WithMultipleWriters() {
+	config := &Config{
+		Level:           LevelDebug,
+		Format:          FormatJSON,
+		Output:          OutputFile,
+		LogDir:          s.tmpDir,
+		LevelSeparate:   true,
+		RotationEnabled: true,
+	}
+	config.ApplyDefaults()
+
+	log, err := newZapLogger(config)
+	s.Require().NoError(err)
+
+	// 写入一些数据
+	log.Debug("debug")
+	log.Info("info")
+	log.Warn("warn")
+	log.Error("error")
+
+	// Close 应该关闭所有 writers
+	err = log.Close()
+	s.NoError(err)
+}
+
+func (s *CloseTestSuite) TestClose_ConsoleOnly() {
+	config := &Config{
+		Level:  LevelInfo,
+		Format: FormatConsole,
+		Output: OutputConsole,
+	}
+	config.ApplyDefaults()
+
+	log, err := newZapLogger(config)
+	s.Require().NoError(err)
+
+	// 没有 file writers 的情况
+	err = log.Close()
+	s.NoError(err)
+}
