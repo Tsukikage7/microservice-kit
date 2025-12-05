@@ -116,3 +116,12 @@ func NewLogger(config *Config) (Logger, error) {
 		return nil, &ConfigError{Field: "type", Message: "unsupported logger type: " + config.Type}
 	}
 }
+
+// MustNewLogger 创建 logger 实例，失败时 panic.
+func MustNewLogger(config *Config) Logger {
+	l, err := NewLogger(config)
+	if err != nil {
+		panic(err)
+	}
+	return l
+}

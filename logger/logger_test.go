@@ -36,6 +36,20 @@ func (s *LoggerTestSuite) TestNewLogger_DefaultConfig() {
 	defer log.Close()
 }
 
+func (s *LoggerTestSuite) TestMustNewLogger_Success() {
+	s.NotPanics(func() {
+		log := MustNewLogger(DefaultConfig())
+		s.NotNil(log)
+		log.Close()
+	})
+}
+
+func (s *LoggerTestSuite) TestMustNewLogger_Panic() {
+	s.Panics(func() {
+		MustNewLogger(nil)
+	})
+}
+
 func (s *LoggerTestSuite) TestNewLogger_DevConfig() {
 	log, err := NewLogger(NewDevConfig())
 	s.NoError(err)
