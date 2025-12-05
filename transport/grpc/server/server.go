@@ -1,3 +1,4 @@
+// Package server 提供 gRPC 服务器实现.
 package server
 
 import (
@@ -9,61 +10,47 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-// GRPCRegistrar gRPC 服务注册器接口.
-type GRPCRegistrar interface {
+// Registrar gRPC 服务注册器接口.
+type Registrar interface {
 	RegisterGRPC(server *grpc.Server)
 }
 
-// GRPC gRPC 服务器.
-type GRPC struct {
-	opts     *grpcOptions
+// Server gRPC 服务器.
+type Server struct {
+	opts     *options
 	server   *grpc.Server
 	listener net.Listener
 }
 
-// NewGRPC 创建 gRPC 服务器.
-//
-// 如果未设置 logger，会 panic.
-//
-// 示例:
-//
-//	srv := server.NewGRPC(
-//	    server.WithGRPCAddr(":9090"),
-//	    server.WithGRPCLogger(log),
-//	)
-//	srv.Register(userService)
-func NewGRPC(opts ...GRPCOption) *GRPC {
-	o := defaultGRPCOptions()
+// New 创建 gRPC 服务器，如果未设置 logger 会 panic.
+func New(opts ...Option) *Server {
+	o := defaultOptions()
 	for _, opt := range opts {
 		opt(o)
 	}
 
 	if o.logger == nil {
-		panic("server: 必须设置 logger")
+		panic("grpc server: 必须设置 logger")
 	}
 
-	return &GRPC{
+	return &Server{
 		opts: o,
 	}
 }
 
-// Register 注册 gRPC 服务.
-//
-// 支持链式调用.
-func (s *GRPC) Register(services ...GRPCRegistrar) *GRPC {
+// Register 注册 gRPC 服务，支持链式调用.
+func (s *Server) Register(services ...Registrar) *Server {
 	s.opts.services = append(s.opts.services, services...)
 	return s
 }
 
-// Server 获取底层 grpc.Server.
-//
-// 如果服务器尚未启动，返回 nil.
-func (s *GRPC) Server() *grpc.Server {
+// GRPCServer 返回底层 grpc.Server，未启动时返回 nil.
+func (s *Server) GRPCServer() *grpc.Server {
 	return s.server
 }
 
 // Start 启动 gRPC 服务器.
-func (s *GRPC) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) error {
 	// 创建监听器
 	listener, err := net.Listen("tcp", s.opts.addr)
 	if err != nil {
@@ -87,7 +74,7 @@ func (s *GRPC) Start(ctx context.Context) error {
 		reflection.Register(s.server)
 	}
 
-	s.opts.logger.Debugf("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
+	s.opts.logger.Infof("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -107,12 +94,12 @@ func (s *GRPC) Start(ctx context.Context) error {
 }
 
 // Stop 停止 gRPC 服务器.
-func (s *GRPC) Stop(ctx context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	if s.server == nil {
 		return nil
 	}
 
-	s.opts.logger.Debugf("[%s] 服务器停止中", s.opts.name)
+	s.opts.logger.Infof("[%s] 服务器停止中", s.opts.name)
 
 	// 优雅关闭
 	done := make(chan struct{})
@@ -132,17 +119,17 @@ func (s *GRPC) Stop(ctx context.Context) error {
 }
 
 // Name 返回服务器名称.
-func (s *GRPC) Name() string {
+func (s *Server) Name() string {
 	return s.opts.name
 }
 
 // Addr 返回服务器地址.
-func (s *GRPC) Addr() string {
+func (s *Server) Addr() string {
 	return s.opts.addr
 }
 
 // buildServerOptions 构建 gRPC 服务器选项.
-func (s *GRPC) buildServerOptions() []grpc.ServerOption {
+func (s *Server) buildServerOptions() []grpc.ServerOption {
 	opts := []grpc.ServerOption{
 		// Keepalive 执行策略（防止客户端 ping 过于频繁）
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{

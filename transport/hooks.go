@@ -1,4 +1,4 @@
-package server
+package transport
 
 import "context"
 
@@ -20,17 +20,25 @@ type Hooks struct {
 	AfterStop []Hook
 }
 
-// runBeforeStart 执行启动前钩子.
-func (h *Hooks) runBeforeStart(ctx context.Context) error {
+// run 执行一组钩子.
+func (h *Hooks) run(ctx context.Context, hooks []Hook) error {
 	if h == nil {
 		return nil
 	}
-	for _, hook := range h.BeforeStart {
+	for _, hook := range hooks {
 		if err := hook(ctx); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// runBeforeStart 执行启动前钩子.
+func (h *Hooks) runBeforeStart(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	return h.run(ctx, h.BeforeStart)
 }
 
 // runAfterStart 执行启动后钩子.
@@ -38,12 +46,7 @@ func (h *Hooks) runAfterStart(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
-	for _, hook := range h.AfterStart {
-		if err := hook(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return h.run(ctx, h.AfterStart)
 }
 
 // runBeforeStop 执行停止前钩子.
@@ -51,12 +54,7 @@ func (h *Hooks) runBeforeStop(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
-	for _, hook := range h.BeforeStop {
-		if err := hook(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return h.run(ctx, h.BeforeStop)
 }
 
 // runAfterStop 执行停止后钩子.
@@ -64,12 +62,7 @@ func (h *Hooks) runAfterStop(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
-	for _, hook := range h.AfterStop {
-		if err := hook(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return h.run(ctx, h.AfterStop)
 }
 
 // HooksBuilder 钩子构建器.

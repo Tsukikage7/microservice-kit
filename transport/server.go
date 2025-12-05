@@ -1,32 +1,4 @@
-// Package server 提供应用服务器框架.
-//
-// 特性：
-//   - 统一管理多个服务器（HTTP、gRPC 等）
-//   - 生命周期钩子（BeforeStart/AfterStart/BeforeStop/AfterStop）
-//   - 优雅关闭
-//   - 信号处理
-//
-// 示例：
-//
-//	// 创建 HTTP 服务器
-//	httpSrv := server.NewHTTP(handler,
-//	    server.WithHTTPAddr(":8080"),
-//	)
-//
-//	// 创建 gRPC 服务器
-//	grpcSrv := server.NewGRPC(
-//	    server.WithGRPCAddr(":9090"),
-//	)
-//	grpcSrv.Register(userService)
-//
-//	// 创建应用并运行
-//	app := server.NewApp(
-//	    server.WithName("my-service"),
-//	    server.WithLogger(log),
-//	)
-//	app.Use(httpSrv, grpcSrv)
-//	app.Run()
-package server
+package transport
 
 import (
 	"context"
@@ -34,6 +6,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
+
+	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
 // Server 服务器接口.
@@ -49,6 +24,74 @@ type Server interface {
 
 	// Addr 服务器地址.
 	Addr() string
+}
+
+// AppOption App 配置选项.
+type AppOption func(*appOptions)
+
+// appOptions App 内部配置.
+type appOptions struct {
+	name            string
+	version         string
+	logger          logger.Logger
+	hooks           *Hooks
+	gracefulTimeout time.Duration
+	signals         []os.Signal
+}
+
+// defaultAppOptions 返回默认配置.
+func defaultAppOptions() *appOptions {
+	return &appOptions{
+		name:            "app",
+		version:         "1.0.0",
+		gracefulTimeout: 30 * time.Second,
+	}
+}
+
+// WithName 设置应用名称.
+func WithName(name string) AppOption {
+	return func(o *appOptions) {
+		o.name = name
+	}
+}
+
+// WithVersion 设置应用版本.
+func WithVersion(version string) AppOption {
+	return func(o *appOptions) {
+		o.version = version
+	}
+}
+
+// WithLogger 设置日志记录器（必需）.
+func WithLogger(log logger.Logger) AppOption {
+	return func(o *appOptions) {
+		o.logger = log
+	}
+}
+
+// WithHooks 设置生命周期钩子.
+func WithHooks(hooks *Hooks) AppOption {
+	return func(o *appOptions) {
+		o.hooks = hooks
+	}
+}
+
+// WithGracefulTimeout 设置优雅关闭超时时间.
+//
+// 默认: 30 秒.
+func WithGracefulTimeout(d time.Duration) AppOption {
+	return func(o *appOptions) {
+		o.gracefulTimeout = d
+	}
+}
+
+// WithSignals 设置监听的系统信号.
+//
+// 默认: SIGINT, SIGTERM.
+func WithSignals(signals ...os.Signal) AppOption {
+	return func(o *appOptions) {
+		o.signals = signals
+	}
 }
 
 // App 应用程序，管理多个服务器的生命周期.
@@ -71,7 +114,7 @@ func NewApp(opts ...AppOption) *App {
 	}
 
 	if o.logger == nil {
-		panic("server: 必须设置 logger")
+		panic("transport: 必须设置 logger")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -111,7 +154,7 @@ func (a *App) Run() error {
 		return err
 	}
 
-	a.opts.logger.Debugf("[%s] 应用启动中 [version:%s]", a.opts.name, a.opts.version)
+	a.opts.logger.Infof("[%s] 应用启动中 [version:%s]", a.opts.name, a.opts.version)
 
 	// 启动所有服务器
 	if err := a.start(); err != nil {
@@ -161,7 +204,7 @@ func (a *App) start() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.opts.logger.Debugf("[%s] 启动服务器 [name:%s] [addr:%s]", a.opts.name, s.Name(), s.Addr())
+			a.opts.logger.Infof("[%s] 启动服务器 [name:%s] [addr:%s]", a.opts.name, s.Name(), s.Addr())
 			if err := s.Start(a.ctx); err != nil {
 				errCh <- err
 			}
@@ -186,12 +229,13 @@ func (a *App) waitForShutdown() error {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, signals...)
+	defer signal.Stop(sigCh)
 
 	select {
 	case sig := <-sigCh:
-		a.opts.logger.Debugf("[%s] 收到信号 [signal:%s]", a.opts.name, sig.String())
+		a.opts.logger.Infof("[%s] 收到信号 [signal:%s]", a.opts.name, sig.String())
 	case <-a.ctx.Done():
-		a.opts.logger.Debugf("[%s] 上下文已取消", a.opts.name)
+		a.opts.logger.Infof("[%s] 上下文已取消", a.opts.name)
 	}
 
 	return a.shutdown()
@@ -199,7 +243,7 @@ func (a *App) waitForShutdown() error {
 
 // shutdown 优雅关闭.
 func (a *App) shutdown() error {
-	a.opts.logger.Debugf("[%s] 开始优雅关闭 [timeout:%v]", a.opts.name, a.opts.gracefulTimeout)
+	a.opts.logger.Infof("[%s] 开始优雅关闭 [timeout:%v]", a.opts.name, a.opts.gracefulTimeout)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.opts.gracefulTimeout)
 	defer cancel()
@@ -215,7 +259,7 @@ func (a *App) shutdown() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.opts.logger.Debugf("[%s] 停止服务器 [name:%s]", a.opts.name, s.Name())
+			a.opts.logger.Infof("[%s] 停止服务器 [name:%s]", a.opts.name, s.Name())
 			if err := s.Stop(shutdownCtx); err != nil {
 				a.opts.logger.Errorf("[%s] 服务器停止失败 [name:%s] [error:%v]", a.opts.name, s.Name(), err)
 			}
@@ -231,7 +275,7 @@ func (a *App) shutdown() error {
 
 	select {
 	case <-done:
-		a.opts.logger.Debugf("[%s] 所有服务器已停止", a.opts.name)
+		a.opts.logger.Infof("[%s] 所有服务器已停止", a.opts.name)
 	case <-shutdownCtx.Done():
 		a.opts.logger.Warnf("[%s] 关闭超时，强制退出", a.opts.name)
 	}
@@ -245,6 +289,6 @@ func (a *App) shutdown() error {
 	a.running = false
 	a.mu.Unlock()
 
-	a.opts.logger.Debugf("[%s] 应用已关闭", a.opts.name)
+	a.opts.logger.Infof("[%s] 应用已关闭", a.opts.name)
 	return nil
 }
