@@ -34,8 +34,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-
-	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
 // Server 服务器接口.
@@ -64,10 +62,16 @@ type App struct {
 }
 
 // NewApp 创建应用程序.
+//
+// 如果未设置 logger，会 panic.
 func NewApp(opts ...AppOption) *App {
 	o := defaultAppOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	if o.logger == nil {
+		panic("server: 必须设置 logger")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,7 +111,7 @@ func (a *App) Run() error {
 		return err
 	}
 
-	a.logDebugf("应用启动中 [name:%s] [version:%s]", a.opts.name, a.opts.version)
+	a.opts.logger.Debugf("[%s] 应用启动中 [version:%s]", a.opts.name, a.opts.version)
 
 	// 启动所有服务器
 	if err := a.start(); err != nil {
@@ -116,7 +120,7 @@ func (a *App) Run() error {
 
 	// 执行启动后钩子
 	if err := a.opts.hooks.runAfterStart(a.ctx); err != nil {
-		a.logErrorf("启动后钩子执行失败: %v", err)
+		a.opts.logger.Errorf("[%s] 启动后钩子执行失败 [error:%v]", a.opts.name, err)
 	}
 
 	// 等待关闭信号
@@ -146,7 +150,7 @@ func (a *App) Version() string {
 // start 启动所有服务器.
 func (a *App) start() error {
 	if len(a.servers) == 0 {
-		a.logWarn("没有注册任何服务器")
+		a.opts.logger.Warnf("[%s] 没有注册任何服务器", a.opts.name)
 		return nil
 	}
 
@@ -157,7 +161,7 @@ func (a *App) start() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.logDebugf("启动服务器: %s [addr:%s]", s.Name(), s.Addr())
+			a.opts.logger.Debugf("[%s] 启动服务器 [name:%s] [addr:%s]", a.opts.name, s.Name(), s.Addr())
 			if err := s.Start(a.ctx); err != nil {
 				errCh <- err
 			}
@@ -185,9 +189,9 @@ func (a *App) waitForShutdown() error {
 
 	select {
 	case sig := <-sigCh:
-		a.logDebugf("收到信号: %s", sig.String())
+		a.opts.logger.Debugf("[%s] 收到信号 [signal:%s]", a.opts.name, sig.String())
 	case <-a.ctx.Done():
-		a.logDebug("上下文已取消")
+		a.opts.logger.Debugf("[%s] 上下文已取消", a.opts.name)
 	}
 
 	return a.shutdown()
@@ -195,14 +199,14 @@ func (a *App) waitForShutdown() error {
 
 // shutdown 优雅关闭.
 func (a *App) shutdown() error {
-	a.logDebugf("开始优雅关闭 [timeout:%v]", a.opts.gracefulTimeout)
+	a.opts.logger.Debugf("[%s] 开始优雅关闭 [timeout:%v]", a.opts.name, a.opts.gracefulTimeout)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.opts.gracefulTimeout)
 	defer cancel()
 
 	// 执行停止前钩子
 	if err := a.opts.hooks.runBeforeStop(shutdownCtx); err != nil {
-		a.logErrorf("停止前钩子执行失败: %v", err)
+		a.opts.logger.Errorf("[%s] 停止前钩子执行失败 [error:%v]", a.opts.name, err)
 	}
 
 	// 停止所有服务器
@@ -211,9 +215,9 @@ func (a *App) shutdown() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.logDebugf("停止服务器: %s", s.Name())
+			a.opts.logger.Debugf("[%s] 停止服务器 [name:%s]", a.opts.name, s.Name())
 			if err := s.Stop(shutdownCtx); err != nil {
-				a.logErrorf("服务器停止失败 [name:%s] [error:%v]", s.Name(), err)
+				a.opts.logger.Errorf("[%s] 服务器停止失败 [name:%s] [error:%v]", a.opts.name, s.Name(), err)
 			}
 		}(srv)
 	}
@@ -227,50 +231,20 @@ func (a *App) shutdown() error {
 
 	select {
 	case <-done:
-		a.logDebug("所有服务器已停止")
+		a.opts.logger.Debugf("[%s] 所有服务器已停止", a.opts.name)
 	case <-shutdownCtx.Done():
-		a.logWarn("关闭超时，强制退出")
+		a.opts.logger.Warnf("[%s] 关闭超时，强制退出", a.opts.name)
 	}
 
 	// 执行停止后钩子
 	if err := a.opts.hooks.runAfterStop(context.Background()); err != nil {
-		a.logErrorf("停止后钩子执行失败: %v", err)
+		a.opts.logger.Errorf("[%s] 停止后钩子执行失败 [error:%v]", a.opts.name, err)
 	}
 
 	a.mu.Lock()
 	a.running = false
 	a.mu.Unlock()
 
-	a.logDebug("应用已关闭")
+	a.opts.logger.Debugf("[%s] 应用已关闭", a.opts.name)
 	return nil
-}
-
-// 日志辅助方法.
-
-func (a *App) logger() logger.Logger {
-	return a.opts.logger
-}
-
-func (a *App) logDebug(msg string) {
-	if log := a.logger(); log != nil {
-		log.Debug("[App] " + msg)
-	}
-}
-
-func (a *App) logDebugf(format string, args ...any) {
-	if log := a.logger(); log != nil {
-		log.Debugf("[App] "+format, args...)
-	}
-}
-
-func (a *App) logWarn(msg string) {
-	if log := a.logger(); log != nil {
-		log.Warn("[App] " + msg)
-	}
-}
-
-func (a *App) logErrorf(format string, args ...any) {
-	if log := a.logger(); log != nil {
-		log.Errorf("[App] "+format, args...)
-	}
 }

@@ -81,6 +81,7 @@ type HTTPOption func(*httpOptions)
 
 // httpOptions HTTP 服务器内部配置.
 type httpOptions struct {
+	name         string
 	addr         string
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -91,10 +92,18 @@ type httpOptions struct {
 // defaultHTTPOptions 返回默认 HTTP 配置.
 func defaultHTTPOptions() *httpOptions {
 	return &httpOptions{
+		name:         "HTTP",
 		addr:         ":8080",
 		readTimeout:  30 * time.Second,
 		writeTimeout: 30 * time.Second,
 		idleTimeout:  120 * time.Second,
+	}
+}
+
+// WithHTTPName 设置 HTTP 服务器名称.
+func WithHTTPName(name string) HTTPOption {
+	return func(o *httpOptions) {
+		o.name = name
 	}
 }
 
@@ -138,6 +147,7 @@ type GRPCOption func(*grpcOptions)
 
 // grpcOptions gRPC 服务器内部配置.
 type grpcOptions struct {
+	name               string
 	addr               string
 	enableReflection   bool
 	keepaliveTime      time.Duration
@@ -153,11 +163,19 @@ type grpcOptions struct {
 // defaultGRPCOptions 返回默认 gRPC 配置.
 func defaultGRPCOptions() *grpcOptions {
 	return &grpcOptions{
+		name:             "gRPC",
 		addr:             ":9090",
 		enableReflection: true,
 		keepaliveTime:    60 * time.Second,
 		keepaliveTimeout: 20 * time.Second,
 		minPingInterval:  20 * time.Second,
+	}
+}
+
+// WithGRPCName 设置 gRPC 服务器名称.
+func WithGRPCName(name string) GRPCOption {
+	return func(o *grpcOptions) {
+		o.name = name
 	}
 }
 

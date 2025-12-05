@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-
-	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
 // HTTP HTTP 服务器.
@@ -15,6 +13,8 @@ type HTTP struct {
 }
 
 // NewHTTP 创建 HTTP 服务器.
+//
+// 如果未设置 logger，会 panic.
 //
 // 示例:
 //
@@ -29,6 +29,10 @@ func NewHTTP(handler http.Handler, opts ...HTTPOption) *HTTP {
 	o := defaultHTTPOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	if o.logger == nil {
+		panic("server: 必须设置 logger")
 	}
 
 	return &HTTP{
@@ -47,7 +51,7 @@ func (s *HTTP) Start(ctx context.Context) error {
 		IdleTimeout:  s.opts.idleTimeout,
 	}
 
-	s.logDebugf("HTTP 服务器启动 [addr:%s]", s.opts.addr)
+	s.opts.logger.Debugf("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -72,13 +76,13 @@ func (s *HTTP) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	s.logDebug("HTTP 服务器停止中...")
+	s.opts.logger.Debugf("[%s] 服务器停止中", s.opts.name)
 	return s.server.Shutdown(ctx)
 }
 
 // Name 返回服务器名称.
 func (s *HTTP) Name() string {
-	return "http"
+	return s.opts.name
 }
 
 // Addr 返回服务器地址.
@@ -91,20 +95,3 @@ func (s *HTTP) Handler() http.Handler {
 	return s.handler
 }
 
-// 日志辅助方法.
-
-func (s *HTTP) logger() logger.Logger {
-	return s.opts.logger
-}
-
-func (s *HTTP) logDebug(msg string) {
-	if log := s.logger(); log != nil {
-		log.Debug("[HTTP] " + msg)
-	}
-}
-
-func (s *HTTP) logDebugf(format string, args ...any) {
-	if log := s.logger(); log != nil {
-		log.Debugf("[HTTP] "+format, args...)
-	}
-}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 
-	"github.com/Tsukikage7/microservice-kit/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
@@ -24,6 +23,8 @@ type GRPC struct {
 
 // NewGRPC 创建 gRPC 服务器.
 //
+// 如果未设置 logger，会 panic.
+//
 // 示例:
 //
 //	srv := server.NewGRPC(
@@ -35,6 +36,10 @@ func NewGRPC(opts ...GRPCOption) *GRPC {
 	o := defaultGRPCOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	if o.logger == nil {
+		panic("server: 必须设置 logger")
 	}
 
 	return &GRPC{
@@ -82,7 +87,7 @@ func (s *GRPC) Start(ctx context.Context) error {
 		reflection.Register(s.server)
 	}
 
-	s.logDebugf("gRPC 服务器启动 [addr:%s]", s.opts.addr)
+	s.opts.logger.Debugf("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -107,7 +112,7 @@ func (s *GRPC) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	s.logDebug("gRPC 服务器停止中...")
+	s.opts.logger.Debugf("[%s] 服务器停止中", s.opts.name)
 
 	// 优雅关闭
 	done := make(chan struct{})
@@ -128,7 +133,7 @@ func (s *GRPC) Stop(ctx context.Context) error {
 
 // Name 返回服务器名称.
 func (s *GRPC) Name() string {
-	return "grpc"
+	return s.opts.name
 }
 
 // Addr 返回服务器地址.
@@ -166,20 +171,3 @@ func (s *GRPC) buildServerOptions() []grpc.ServerOption {
 	return opts
 }
 
-// 日志辅助方法.
-
-func (s *GRPC) logger() logger.Logger {
-	return s.opts.logger
-}
-
-func (s *GRPC) logDebug(msg string) {
-	if log := s.logger(); log != nil {
-		log.Debug("[gRPC] " + msg)
-	}
-}
-
-func (s *GRPC) logDebugf(format string, args ...any) {
-	if log := s.logger(); log != nil {
-		log.Debugf("[gRPC] "+format, args...)
-	}
-}

@@ -19,10 +19,13 @@ import (
     "context"
     "net/http"
 
+    "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/server"
 )
 
 func main() {
+    log := logger.New()
+
     // 创建 HTTP 服务器
     mux := http.NewServeMux()
     mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -31,11 +34,13 @@ func main() {
 
     httpSrv := server.NewHTTP(mux,
         server.WithHTTPAddr(":8080"),
+        server.WithHTTPLogger(log),
     )
 
     // 创建 gRPC 服务器
     grpcSrv := server.NewGRPC(
         server.WithGRPCAddr(":9090"),
+        server.WithGRPCLogger(log),
     )
     grpcSrv.Register(userService)
 
@@ -43,6 +48,7 @@ func main() {
     app := server.NewApp(
         server.WithName("my-service"),
         server.WithVersion("1.0.0"),
+        server.WithLogger(log),
     )
     app.Use(httpSrv, grpcSrv)
 
@@ -90,7 +96,7 @@ type Server interface {
 app := server.NewApp(
     server.WithName("my-service"),
     server.WithVersion("1.0.0"),
-    server.WithLogger(log),
+    server.WithLogger(log),  // 必需
     server.WithGracefulTimeout(30 * time.Second),
     server.WithHooks(hooks),
 )
@@ -99,15 +105,18 @@ app.Use(httpServer, grpcServer)
 app.Run()
 ```
 
+**注意**: `WithLogger` 是必需的，未设置会 panic。
+
 ## HTTP 服务器
 
 ```go
 srv := server.NewHTTP(handler,
+    server.WithHTTPName("api-gateway"),  // 可选，默认 "HTTP"
     server.WithHTTPAddr(":8080"),
     server.WithHTTPReadTimeout(30 * time.Second),
     server.WithHTTPWriteTimeout(30 * time.Second),
     server.WithHTTPIdleTimeout(120 * time.Second),
-    server.WithHTTPLogger(log),
+    server.WithHTTPLogger(log),  // 必需
 )
 ```
 
@@ -115,21 +124,23 @@ srv := server.NewHTTP(handler,
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
+| `WithHTTPName` | `HTTP` | 服务器名称 |
 | `WithHTTPAddr` | `:8080` | 监听地址 |
 | `WithHTTPReadTimeout` | `30s` | 读取超时 |
 | `WithHTTPWriteTimeout` | `30s` | 写入超时 |
 | `WithHTTPIdleTimeout` | `120s` | 空闲超时 |
-| `WithHTTPLogger` | `nil` | 日志记录器 |
+| `WithHTTPLogger` | - | 日志记录器（必需） |
 
 ## gRPC 服务器
 
 ```go
 srv := server.NewGRPC(
+    server.WithGRPCName("user-grpc"),  // 可选，默认 "gRPC"
     server.WithGRPCAddr(":9090"),
     server.WithGRPCReflection(true),
     server.WithGRPCKeepalive(60*time.Second, 20*time.Second),
     server.WithGRPCUnaryInterceptor(loggingInterceptor),
-    server.WithGRPCLogger(log),
+    server.WithGRPCLogger(log),  // 必需
 )
 srv.Register(userService, orderService)
 ```
@@ -138,13 +149,14 @@ srv.Register(userService, orderService)
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
+| `WithGRPCName` | `gRPC` | 服务器名称 |
 | `WithGRPCAddr` | `:9090` | 监听地址 |
 | `WithGRPCReflection` | `true` | 启用反射 |
 | `WithGRPCKeepalive` | `60s, 20s` | Keepalive 参数 |
-| `WithGRPCUnaryInterceptor` | `nil` | 一元拦截器 |
-| `WithGRPCStreamInterceptor` | `nil` | 流拦截器 |
-| `WithGRPCServerOption` | `nil` | 自定义选项 |
-| `WithGRPCLogger` | `nil` | 日志记录器 |
+| `WithGRPCUnaryInterceptor` | - | 一元拦截器 |
+| `WithGRPCStreamInterceptor` | - | 流拦截器 |
+| `WithGRPCServerOption` | - | 自定义选项 |
+| `WithGRPCLogger` | - | 日志记录器（必需） |
 
 ### 服务注册
 
@@ -181,6 +193,7 @@ hooks := server.NewHooks().
     Build()
 
 app := server.NewApp(
+    server.WithLogger(log),
     server.WithHooks(hooks),
 )
 ```
@@ -206,6 +219,7 @@ app := server.NewApp(
 
 ```go
 type CustomServer struct {
+    name string
     addr string
 }
 
@@ -220,7 +234,7 @@ func (s *CustomServer) Stop(ctx context.Context) error {
 }
 
 func (s *CustomServer) Name() string {
-    return "custom"
+    return s.name
 }
 
 func (s *CustomServer) Addr() string {
@@ -228,13 +242,14 @@ func (s *CustomServer) Addr() string {
 }
 
 // 使用
-app.Use(&CustomServer{addr: ":8888"})
+app.Use(&CustomServer{name: "custom", addr: ":8888"})
 ```
 
 ## 优雅关闭
 
 ```go
 app := server.NewApp(
+    server.WithLogger(log),
     server.WithGracefulTimeout(30 * time.Second),
     server.WithSignals(syscall.SIGINT, syscall.SIGTERM),
 )
@@ -251,15 +266,15 @@ package main
 
 import (
     "context"
-    "log/slog"
     "net/http"
     "time"
 
+    "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/server"
 )
 
 func main() {
-    log := slog.Default()
+    log := logger.New()
 
     // HTTP Handler
     mux := http.NewServeMux()
@@ -268,14 +283,18 @@ func main() {
 
     // 创建 HTTP 服务器
     httpSrv := server.NewHTTP(mux,
+        server.WithHTTPName("api"),
         server.WithHTTPAddr(":8080"),
         server.WithHTTPReadTimeout(30*time.Second),
+        server.WithHTTPLogger(log),
     )
 
     // 创建 gRPC 服务器
     grpcSrv := server.NewGRPC(
+        server.WithGRPCName("rpc"),
         server.WithGRPCAddr(":9090"),
         server.WithGRPCReflection(true),
+        server.WithGRPCLogger(log),
     )
     grpcSrv.Register(&UserService{}, &OrderService{})
 
@@ -295,6 +314,7 @@ func main() {
     app := server.NewApp(
         server.WithName("example-service"),
         server.WithVersion("1.0.0"),
+        server.WithLogger(log),
         server.WithGracefulTimeout(30*time.Second),
         server.WithHooks(hooks),
     )
@@ -318,3 +338,5 @@ var (
     ErrNilHandler    = errors.New("server: handler is nil")
 )
 ```
+
+**注意**: 如果未设置 `logger`，`NewApp`、`NewHTTP`、`NewGRPC` 会 panic。
