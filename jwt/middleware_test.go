@@ -396,7 +396,7 @@ func TestHTTPMiddleware(t *testing.T) {
 			w.Write([]byte("OK"))
 		})
 
-		wrapped := j.HTTPMiddleware(handler)
+		wrapped := HTTPMiddleware(j)(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 		req.Header.Set("Authorization", token)
@@ -413,7 +413,7 @@ func TestHTTPMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		wrapped := j.HTTPMiddleware(handler)
+		wrapped := HTTPMiddleware(j)(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 		rec := httptest.NewRecorder()
@@ -428,7 +428,7 @@ func TestHTTPMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		wrapped := j.HTTPMiddleware(handler)
+		wrapped := HTTPMiddleware(j)(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 		req.Header.Set("Authorization", "Bearer invalid-token")
@@ -456,7 +456,7 @@ func TestHTTPMiddleware_Whitelist(t *testing.T) {
 			w.Write([]byte("OK"))
 		})
 
-		wrapped := j.HTTPMiddleware(handler)
+		wrapped := HTTPMiddleware(j)(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		rec := httptest.NewRecorder()
@@ -471,7 +471,7 @@ func TestHTTPMiddleware_Whitelist(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		wrapped := j.HTTPMiddleware(handler)
+		wrapped := HTTPMiddleware(j)(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/public/images/logo.png", nil)
 		rec := httptest.NewRecorder()
@@ -480,26 +480,6 @@ func TestHTTPMiddleware_Whitelist(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
-}
-
-func TestHTTPMiddlewareFunc(t *testing.T) {
-	j := newTestJWT()
-	token := generateTestToken(j, "user-123")
-
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	}
-
-	wrapped := j.HTTPMiddlewareFunc(handler)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	req.Header.Set("Authorization", token)
-	rec := httptest.NewRecorder()
-
-	wrapped.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestExtractToken(t *testing.T) {

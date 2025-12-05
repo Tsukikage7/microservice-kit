@@ -38,6 +38,13 @@ import (
     "github.com/Tsukikage7/microservice-kit/trace"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
     "github.com/Tsukikage7/microservice-kit/retry"
+    "github.com/Tsukikage7/microservice-kit/jwt"
+)
+
+// 初始化 JWT 服务
+j := jwt.New(
+    jwt.WithSecretKey("your-secret-key"),
+    jwt.WithLogger(log),
 )
 
 // 定义 Endpoint
@@ -45,13 +52,21 @@ var myEndpoint transport.Endpoint = func(ctx context.Context, req any) (any, err
     return process(req)
 }
 
-// 应用中间件（从外到内执行）
+// 服务端中间件（从外到内执行）
 myEndpoint = transport.Chain(
     metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
     trace.EndpointMiddleware("my-service", "MyMethod"),
     ratelimit.EndpointMiddleware(limiter),
-    retry.EndpointMiddleware(retryConfig),
+    jwt.NewParser(j),  // JWT 验证
 )(myEndpoint)
+
+// 客户端中间件（从外到内执行）
+clientEndpoint = transport.Chain(
+    metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
+    trace.EndpointMiddleware("my-service", "MyMethod"),
+    jwt.NewSigner(j),  // JWT 签名
+    retry.EndpointMiddleware(retryConfig),
+)(clientEndpoint)
 ```
 
 ### HTTP 中间件
@@ -66,6 +81,12 @@ import (
     "github.com/Tsukikage7/microservice-kit/jwt"
 )
 
+// 初始化 JWT 服务
+j := jwt.New(
+    jwt.WithSecretKey("your-secret-key"),
+    jwt.WithLogger(log),
+)
+
 mux := http.NewServeMux()
 mux.HandleFunc("/api/users", handleUsers)
 
@@ -74,7 +95,7 @@ var handler http.Handler = mux
 handler = metrics.HTTPMiddleware(collector)(handler)
 handler = trace.HTTPMiddleware("my-service")(handler)
 handler = ratelimit.HTTPMiddleware(limiter)(handler)
-handler = jwt.MustNew(cfg).HTTPMiddleware()(handler)
+handler = jwt.HTTPMiddleware(j)(handler)
 
 http.ListenAndServe(":8080", handler)
 ```
@@ -93,19 +114,25 @@ import (
     "google.golang.org/grpc"
 )
 
+// 初始化 JWT 服务
+j := jwt.New(
+    jwt.WithSecretKey("your-secret-key"),
+    jwt.WithLogger(log),
+)
+
 // 服务端
 server := grpc.NewServer(
     grpc.ChainUnaryInterceptor(
         metrics.UnaryServerInterceptor(collector),
         trace.UnaryServerInterceptor("my-service"),
         ratelimit.UnaryServerInterceptor(limiter),
-        jwt.MustNew(cfg).UnaryServerInterceptor(),
+        jwt.UnaryServerInterceptor(j),
     ),
     grpc.ChainStreamInterceptor(
         metrics.StreamServerInterceptor(collector),
         trace.StreamServerInterceptor("my-service"),
         ratelimit.StreamServerInterceptor(limiter),
-        jwt.MustNew(cfg).StreamServerInterceptor(),
+        jwt.StreamServerInterceptor(j),
     ),
 )
 
@@ -133,15 +160,14 @@ package main
 
 import (
     "context"
-    "log"
     "net/http"
-    "time"
 
     "github.com/Tsukikage7/microservice-kit/config"
+    "github.com/Tsukikage7/microservice-kit/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/trace"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
+    "github.com/Tsukikage7/microservice-kit/trace"
 )
 
 func main() {
@@ -170,25 +196,46 @@ func main() {
     // 5. 创建限流器
     limiter := ratelimit.NewTokenBucket(1000, 100)
 
-    // 6. 创建路由
+    // 6. 初始化 JWT 认证
+    whitelist := jwt.NewWhitelist().AddHTTPPaths("/health", "/metrics")
+    j := jwt.New(
+        jwt.WithSecretKey("your-secret-key"),
+        jwt.WithLogger(log),
+        jwt.WithWhitelist(whitelist),
+    )
+
+    // 7. 创建路由
     mux := http.NewServeMux()
+    mux.HandleFunc("/health", healthHandler)
     mux.HandleFunc("/api/users", handleUsers)
 
-    // 7. 应用中间件
+    // 8. 应用中间件（从外到内）
     var handler http.Handler = mux
     handler = metrics.HTTPMiddleware(collector)(handler)
     handler = trace.HTTPMiddleware("my-service")(handler)
     handler = ratelimit.HTTPMiddleware(limiter)(handler)
+    handler = jwt.HTTPMiddleware(j)(handler)
 
-    // 8. 暴露指标端点
+    // 9. 暴露指标端点
     http.Handle(collector.GetPath(), collector.GetHandler())
 
     log.Info("Server starting on :8080")
     http.ListenAndServe(":8080", handler)
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte(`{"status": "ok"}`))
+}
+
 func handleUsers(w http.ResponseWriter, r *http.Request) {
-    w.Write([]byte(`{"users": []}`))
+    // 获取已验证的用户信息
+    claims, ok := jwt.ClaimsFromContext(r.Context())
+    if !ok {
+        http.Error(w, "unauthorized", http.StatusUnauthorized)
+        return
+    }
+    subject, _ := claims.GetSubject()
+    w.Write([]byte(`{"user": "` + subject + `"}`))
 }
 ```
 
@@ -202,13 +249,18 @@ import (
     "log"
     "net"
 
+    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/trace"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
+    "github.com/Tsukikage7/microservice-kit/trace"
     "google.golang.org/grpc"
 )
 
 func main() {
+    // 初始化日志
+    log := logger.MustNew(&logger.Config{Level: "info"})
+
     // 初始化组件
     collector, _ := metrics.New(&metrics.Config{Namespace: "my_service"})
     tp, _ := trace.NewTracer(&trace.TracingConfig{
@@ -218,12 +270,27 @@ func main() {
     defer tp.Shutdown(context.Background())
     limiter := ratelimit.NewTokenBucket(1000, 100)
 
+    // 初始化 JWT 认证
+    whitelist := jwt.NewWhitelist().AddGRPCMethods("/grpc.health.v1.Health/")
+    j := jwt.New(
+        jwt.WithSecretKey("your-secret-key"),
+        jwt.WithLogger(log),
+        jwt.WithWhitelist(whitelist),
+    )
+
     // 创建 gRPC 服务器
     server := grpc.NewServer(
         grpc.ChainUnaryInterceptor(
             metrics.UnaryServerInterceptor(collector),
             trace.UnaryServerInterceptor("my-service"),
             ratelimit.UnaryServerInterceptor(limiter),
+            jwt.UnaryServerInterceptor(j),
+        ),
+        grpc.ChainStreamInterceptor(
+            metrics.StreamServerInterceptor(collector),
+            trace.StreamServerInterceptor("my-service"),
+            ratelimit.StreamServerInterceptor(limiter),
+            jwt.StreamServerInterceptor(j),
         ),
     )
 
@@ -231,7 +298,7 @@ func main() {
     // pb.RegisterMyServiceServer(server, &myService{})
 
     lis, _ := net.Listen("tcp", ":50051")
-    log.Println("gRPC server starting on :50051")
+    log.Info("gRPC server starting on :50051")
     server.Serve(lis)
 }
 ```
@@ -252,7 +319,7 @@ func main() {
 handler = metrics.HTTPMiddleware(collector)(handler)
 handler = trace.HTTPMiddleware("my-service")(handler)
 handler = ratelimit.HTTPMiddleware(limiter)(handler)
-handler = jwt.MustNew(cfg).HTTPMiddleware()(handler)
+handler = jwt.HTTPMiddleware(j)(handler)
 
 // 客户端推荐顺序
 conn, _ := grpc.Dial("target",

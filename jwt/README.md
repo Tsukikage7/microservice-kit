@@ -193,8 +193,15 @@ clientEndpoint = transport.Chain(
 mux := http.NewServeMux()
 mux.HandleFunc("/api/users", usersHandler)
 
-// 使用中间件
-handler := j.HTTPMiddleware(mux)
+// 使用中间件（与其他中间件风格一致）
+var handler http.Handler = mux
+handler = jwt.HTTPMiddleware(j)(handler)
+
+// 使用自定义 Claims 类型
+handler = jwt.HTTPMiddlewareWithClaims(j, func() jwt.Claims {
+    return &UserClaims{}
+})(handler)
+
 http.ListenAndServe(":8080", handler)
 ```
 
@@ -203,19 +210,32 @@ http.ListenAndServe(":8080", handler)
 ```go
 // 一元拦截器
 srv := grpc.NewServer(
-    grpc.UnaryInterceptor(j.UnaryServerInterceptor()),
+    grpc.UnaryInterceptor(jwt.UnaryServerInterceptor(j)),
 )
 
 // 流拦截器
 srv := grpc.NewServer(
-    grpc.StreamInterceptor(j.StreamServerInterceptor()),
+    grpc.StreamInterceptor(jwt.StreamServerInterceptor(j)),
 )
 
 // 链式使用
 srv := grpc.NewServer(
     grpc.ChainUnaryInterceptor(
-        j.UnaryServerInterceptor(),
+        jwt.UnaryServerInterceptor(j),
         otherInterceptor,
+    ),
+    grpc.ChainStreamInterceptor(
+        jwt.StreamServerInterceptor(j),
+        otherStreamInterceptor,
+    ),
+)
+
+// 使用自定义 Claims 类型
+srv := grpc.NewServer(
+    grpc.ChainUnaryInterceptor(
+        jwt.UnaryServerInterceptorWithClaims(j, func() jwt.Claims {
+            return &UserClaims{}
+        }),
     ),
 )
 ```
@@ -337,8 +357,9 @@ func main() {
     mux.HandleFunc("/login", loginHandler(j))
     mux.HandleFunc("/api/me", meHandler)
 
-    // 启动服务
-    handler := j.HTTPMiddleware(mux)
+    // 启动服务（应用中间件）
+    var handler http.Handler = mux
+    handler = jwt.HTTPMiddleware(j)(handler)
     http.ListenAndServe(":8080", handler)
 }
 

@@ -128,46 +128,98 @@ func NewParserWithClaims(j *JWT, cf ClaimsFactory) transport.Middleware {
 }
 
 // HTTPMiddleware 创建 HTTP 认证中间件.
-func (j *JWT) HTTPMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 检查白名单
-		if j.IsWhitelisted(r.Context(), r) {
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	handler = jwt.HTTPMiddleware(jwtService)(handler)
+func HTTPMiddleware(j *JWT) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 检查白名单
+			if j.IsWhitelisted(r.Context(), r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// 提取令牌
+			token, err := j.ExtractToken(r.Context(), r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// 验证令牌
+			claims, err := j.Validate(token)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// 将 Claims 存入上下文
+			if c, ok := claims.(Claims); ok {
+				ctx := ContextWithClaims(r.Context(), c)
+				ctx = ContextWithToken(ctx, token)
+				r = r.WithContext(ctx)
+			}
+
 			next.ServeHTTP(w, r)
-			return
-		}
-
-		// 提取令牌
-		token, err := j.ExtractToken(r.Context(), r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-
-		// 验证令牌
-		claims, err := j.Validate(token)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-
-		// 将 Claims 存入上下文
-		if c, ok := claims.(Claims); ok {
-			ctx := ContextWithClaims(r.Context(), c)
-			ctx = ContextWithToken(ctx, token)
-			r = r.WithContext(ctx)
-		}
-
-		next.ServeHTTP(w, r)
-	})
+		})
+	}
 }
 
-// HTTPMiddlewareFunc 创建 HTTP 认证中间件（函数形式）.
-func (j *JWT) HTTPMiddlewareFunc(next http.HandlerFunc) http.HandlerFunc {
-	return j.HTTPMiddleware(next).ServeHTTP
+// HTTPMiddlewareWithClaims 创建使用自定义 Claims 类型的 HTTP 认证中间件.
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	handler = jwt.HTTPMiddlewareWithClaims(jwtService, func() jwt.Claims {
+//	    return &CustomClaims{}
+//	})(handler)
+func HTTPMiddlewareWithClaims(j *JWT, cf ClaimsFactory) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 检查白名单
+			if j.IsWhitelisted(r.Context(), r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// 提取令牌
+			token, err := j.ExtractToken(r.Context(), r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// 验证令牌（使用自定义 Claims 类型）
+			claims, err := j.ValidateWithClaims(token, cf())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// 将 Claims 存入上下文
+			if c, ok := claims.(Claims); ok {
+				ctx := ContextWithClaims(r.Context(), c)
+				ctx = ContextWithToken(ctx, token)
+				r = r.WithContext(ctx)
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-// UnaryServerInterceptor 创建 gRPC 一元拦截器.
-func (j *JWT) UnaryServerInterceptor() grpc.UnaryServerInterceptor {
+// UnaryServerInterceptor 创建 gRPC 一元服务端拦截器.
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	server := grpc.NewServer(
+//	    grpc.UnaryInterceptor(jwt.UnaryServerInterceptor(jwtService)),
+//	)
+func UnaryServerInterceptor(j *JWT) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req any,
@@ -201,8 +253,50 @@ func (j *JWT) UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// StreamServerInterceptor 创建 gRPC 流拦截器.
-func (j *JWT) StreamServerInterceptor() grpc.StreamServerInterceptor {
+// UnaryServerInterceptorWithClaims 创建使用自定义 Claims 类型的 gRPC 一元服务端拦截器.
+func UnaryServerInterceptorWithClaims(j *JWT, cf ClaimsFactory) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (any, error) {
+		// 检查白名单
+		if j.IsWhitelisted(ctx, req) {
+			return handler(ctx, req)
+		}
+
+		// 提取令牌
+		token, err := j.ExtractToken(ctx, req)
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
+
+		// 验证令牌（使用自定义 Claims 类型）
+		claims, err := j.ValidateWithClaims(token, cf())
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
+
+		// 将 Claims 存入上下文
+		if c, ok := claims.(Claims); ok {
+			ctx = ContextWithClaims(ctx, c)
+			ctx = ContextWithToken(ctx, token)
+		}
+
+		return handler(ctx, req)
+	}
+}
+
+// StreamServerInterceptor 创建 gRPC 流服务端拦截器.
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	server := grpc.NewServer(
+//	    grpc.StreamInterceptor(jwt.StreamServerInterceptor(jwtService)),
+//	)
+func StreamServerInterceptor(j *JWT) grpc.StreamServerInterceptor {
 	return func(
 		srv any,
 		ss grpc.ServerStream,
@@ -224,6 +318,44 @@ func (j *JWT) StreamServerInterceptor() grpc.StreamServerInterceptor {
 
 		// 验证令牌
 		claims, err := j.Validate(token)
+		if err != nil {
+			return status.Error(codes.Unauthenticated, err.Error())
+		}
+
+		// 创建带有 Claims 的包装流
+		if c, ok := claims.(Claims); ok {
+			ctx = ContextWithClaims(ctx, c)
+			ctx = ContextWithToken(ctx, token)
+			ss = &wrappedServerStream{ServerStream: ss, ctx: ctx}
+		}
+
+		return handler(srv, ss)
+	}
+}
+
+// StreamServerInterceptorWithClaims 创建使用自定义 Claims 类型的 gRPC 流服务端拦截器.
+func StreamServerInterceptorWithClaims(j *JWT, cf ClaimsFactory) grpc.StreamServerInterceptor {
+	return func(
+		srv any,
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
+		ctx := ss.Context()
+
+		// 检查白名单
+		if j.IsWhitelisted(ctx, nil) {
+			return handler(srv, ss)
+		}
+
+		// 提取令牌
+		token, err := j.ExtractToken(ctx, nil)
+		if err != nil {
+			return status.Error(codes.Unauthenticated, err.Error())
+		}
+
+		// 验证令牌（使用自定义 Claims 类型）
+		claims, err := j.ValidateWithClaims(token, cf())
 		if err != nil {
 			return status.Error(codes.Unauthenticated, err.Error())
 		}
