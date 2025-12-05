@@ -7,39 +7,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_NilConfig(t *testing.T) {
-	c, err := New(nil)
+func TestNewMetrics_NilConfig(t *testing.T) {
+	c, err := NewMetrics(nil)
 
 	assert.Nil(t, c)
 	assert.ErrorIs(t, err, ErrNilConfig)
 }
 
-func TestNew_Success(t *testing.T) {
+func TestNewMetrics_Success(t *testing.T) {
 	cfg := &Config{
 		Namespace: "test",
 		Path:      "/metrics",
 	}
 
-	c, err := New(cfg)
+	c, err := NewMetrics(cfg)
 
 	require.NoError(t, err)
 	assert.IsType(t, &PrometheusCollector{}, c)
 }
 
-func TestMustNew_Success(t *testing.T) {
+func TestMustNewMetrics_Success(t *testing.T) {
 	cfg := &Config{
 		Namespace: "test",
 	}
 
 	assert.NotPanics(t, func() {
-		c := MustNew(cfg)
+		c := MustNewMetrics(cfg)
 		assert.NotNil(t, c)
 	})
 }
 
-func TestMustNew_NilConfig(t *testing.T) {
+func TestMustNewMetrics_NilConfig(t *testing.T) {
 	assert.Panics(t, func() {
-		MustNew(nil)
+		MustNewMetrics(nil)
 	})
 }
 

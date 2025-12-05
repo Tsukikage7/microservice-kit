@@ -29,8 +29,8 @@ type Collector interface {
 	GetPath() string
 }
 
-// New 创建指标收集器.
-func New(cfg *Config) (*PrometheusCollector, error) {
+// NewMetrics 创建指标收集器.
+func NewMetrics(cfg *Config) (*PrometheusCollector, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
 	}
@@ -38,9 +38,9 @@ func New(cfg *Config) (*PrometheusCollector, error) {
 	return NewPrometheus(cfg)
 }
 
-// MustNew 创建指标收集器，失败时 panic.
-func MustNew(cfg *Config) *PrometheusCollector {
-	c, err := New(cfg)
+// MustNewMetrics 创建指标收集器，失败时 panic.
+func MustNewMetrics(cfg *Config) *PrometheusCollector {
+	c, err := NewMetrics(cfg)
 	if err != nil {
 		panic(err)
 	}

@@ -9,7 +9,7 @@ import (
 
 func TestMessagingMetrics_RecordSend(t *testing.T) {
 	// 创建 Prometheus collector（用于测试）
-	collector := metrics.MustNew(&metrics.Config{
+	collector := metrics.MustNewMetrics(&metrics.Config{
 		Namespace: "test",
 	})
 
@@ -22,7 +22,7 @@ func TestMessagingMetrics_RecordSend(t *testing.T) {
 }
 
 func TestMessagingMetrics_RecordConsume(t *testing.T) {
-	collector := metrics.MustNew(&metrics.Config{
+	collector := metrics.MustNewMetrics(&metrics.Config{
 		Namespace: "test",
 	})
 
@@ -35,7 +35,7 @@ func TestMessagingMetrics_RecordConsume(t *testing.T) {
 }
 
 func TestMessagingMetrics_RecordErrors(t *testing.T) {
-	collector := metrics.MustNew(&metrics.Config{
+	collector := metrics.MustNewMetrics(&metrics.Config{
 		Namespace: "test",
 	})
 
@@ -48,7 +48,7 @@ func TestMessagingMetrics_RecordErrors(t *testing.T) {
 }
 
 func TestMessagingMetrics_RecordRetryAndDLQ(t *testing.T) {
-	collector := metrics.MustNew(&metrics.Config{
+	collector := metrics.MustNewMetrics(&metrics.Config{
 		Namespace: "test",
 	})
 

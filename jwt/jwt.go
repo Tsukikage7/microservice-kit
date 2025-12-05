@@ -9,7 +9,7 @@
 //
 // 示例：
 //
-//	j := jwt.New(
+//	j := jwt.NewJWT(
 //	    jwt.WithSecretKey("your-secret-key"),
 //	    jwt.WithIssuer("my-service"),
 //	    jwt.WithLogger(log),
@@ -36,10 +36,10 @@ type JWT struct {
 	opts *options
 }
 
-// New 创建 JWT 服务.
+// NewJWT 创建 JWT 服务.
 //
 // 如果未设置 secretKey 或 logger，会 panic.
-func New(opts ...Option) *JWT {
+func NewJWT(opts ...Option) *JWT {
 	o := defaultOptions()
 	for _, opt := range opts {
 		opt(o)

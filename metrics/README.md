@@ -17,7 +17,7 @@ cfg := &metrics.Config{
     Path:      "/metrics",
 }
 
-collector, err := metrics.New(cfg)
+collector, err := metrics.NewMetrics(cfg)
 if err != nil {
     log.Fatal(err)
 }
@@ -37,20 +37,20 @@ http.ListenAndServe(":8080", handler)
 
 ### 创建收集器
 
-#### New
+#### NewMetrics
 
 创建指标收集器。
 
 ```go
-func New(cfg *Config) (Collector, error)
+func NewMetrics(cfg *Config) (Collector, error)
 ```
 
-#### MustNew
+#### MustNewMetrics
 
 创建指标收集器，失败时 panic。
 
 ```go
-func MustNew(cfg *Config) Collector
+func MustNewMetrics(cfg *Config) Collector
 ```
 
 ### HTTP 指标
@@ -237,7 +237,7 @@ func main() {
         Path:      "/metrics",
     }
 
-    collector, err := metrics.New(cfg)
+    collector, err := metrics.NewMetrics(cfg)
     if err != nil {
         log.Fatal(err)
     }
@@ -289,7 +289,7 @@ func main() {
         Namespace: "order_service",
     }
 
-    collector, err := metrics.New(cfg)
+    collector, err := metrics.NewMetrics(cfg)
     if err != nil {
         panic(err)
     }
@@ -325,7 +325,7 @@ func main() {
         Namespace: "user_service",
     }
 
-    collector, _ := metrics.New(cfg)
+    collector, _ := metrics.NewMetrics(cfg)
 
     // 创建带指标拦截器的 gRPC 连接
     conn, _ := grpc.Dial("order-service:50051",

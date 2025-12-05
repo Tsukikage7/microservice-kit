@@ -55,7 +55,7 @@ func (s *OptionsTestSuite) TearDownSuite() {
 
 func (s *OptionsTestSuite) TestNew_MemoryCache() {
 	config := NewMemoryConfig()
-	cache, err := New(config, s.logger)
+	cache, err := NewCache(config, s.logger)
 	s.NoError(err)
 	s.NotNil(cache)
 	defer cache.Close()
@@ -63,18 +63,18 @@ func (s *OptionsTestSuite) TestNew_MemoryCache() {
 
 func (s *OptionsTestSuite) TestNew_InvalidConfig() {
 	config := &Config{Type: "invalid"}
-	_, err := New(config, s.logger)
+	_, err := NewCache(config, s.logger)
 	s.Error(err)
 }
 
 func (s *OptionsTestSuite) TestNew_NilConfig() {
-	_, err := New(nil, s.logger)
+	_, err := NewCache(nil, s.logger)
 	s.Error(err)
 }
 
 func (s *OptionsTestSuite) TestNew_NilLogger() {
 	config := NewMemoryConfig()
-	_, err := New(config, nil)
+	_, err := NewCache(config, nil)
 	s.Error(err)
 	s.Equal(ErrNilLogger, err)
 }
@@ -84,7 +84,7 @@ func (s *OptionsTestSuite) TestNew_Unsupported() {
 	config := &Config{Type: ""}
 	config.ApplyDefaults()
 	// Type 被设置为 redis，但没有 addr
-	_, err := New(config, s.logger)
+	_, err := NewCache(config, s.logger)
 	s.Error(err)
 }
 
@@ -92,7 +92,7 @@ func (s *OptionsTestSuite) TestMustNew_Success() {
 	config := NewMemoryConfig()
 
 	s.NotPanics(func() {
-		cache := MustNew(config, s.logger)
+		cache := MustNewCache(config, s.logger)
 		s.NotNil(cache)
 		cache.Close()
 	})
@@ -102,7 +102,7 @@ func (s *OptionsTestSuite) TestMustNew_Panic() {
 	config := &Config{Type: "invalid"}
 
 	s.Panics(func() {
-		MustNew(config, s.logger)
+		MustNewCache(config, s.logger)
 	})
 }
 
@@ -110,6 +110,6 @@ func (s *OptionsTestSuite) TestMustNew_NilLoggerPanic() {
 	config := NewMemoryConfig()
 
 	s.Panics(func() {
-		MustNew(config, nil)
+		MustNewCache(config, nil)
 	})
 }

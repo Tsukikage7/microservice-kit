@@ -42,7 +42,7 @@ import (
 )
 
 // 初始化 JWT 服务
-j := jwt.New(
+j := jwt.NewJWT(
     jwt.WithSecretKey("your-secret-key"),
     jwt.WithLogger(log),
 )
@@ -82,7 +82,7 @@ import (
 )
 
 // 初始化 JWT 服务
-j := jwt.New(
+j := jwt.NewJWT(
     jwt.WithSecretKey("your-secret-key"),
     jwt.WithLogger(log),
 )
@@ -115,7 +115,7 @@ import (
 )
 
 // 初始化 JWT 服务
-j := jwt.New(
+j := jwt.NewJWT(
     jwt.WithSecretKey("your-secret-key"),
     jwt.WithLogger(log),
 )
@@ -180,7 +180,7 @@ func main() {
     log := logger.MustNew(&logger.Config{Level: "info"})
 
     // 3. 初始化指标收集
-    collector, _ := metrics.New(&metrics.Config{
+    collector, _ := metrics.NewMetrics(&metrics.Config{
         Namespace: "my_service",
         Path:      "/metrics",
     })
@@ -198,7 +198,7 @@ func main() {
 
     // 6. 初始化 JWT 认证
     whitelist := jwt.NewWhitelist().AddHTTPPaths("/health", "/metrics")
-    j := jwt.New(
+    j := jwt.NewJWT(
         jwt.WithSecretKey("your-secret-key"),
         jwt.WithLogger(log),
         jwt.WithWhitelist(whitelist),
@@ -262,7 +262,7 @@ func main() {
     log := logger.MustNew(&logger.Config{Level: "info"})
 
     // 初始化组件
-    collector, _ := metrics.New(&metrics.Config{Namespace: "my_service"})
+    collector, _ := metrics.NewMetrics(&metrics.Config{Namespace: "my_service"})
     tp, _ := trace.NewTracer(&trace.TracingConfig{
         Enabled: true,
         OTLP:    &trace.OTLPConfig{Endpoint: "localhost:4318"},
@@ -272,7 +272,7 @@ func main() {
 
     // 初始化 JWT 认证
     whitelist := jwt.NewWhitelist().AddGRPCMethods("/grpc.health.v1.Health/")
-    j := jwt.New(
+    j := jwt.NewJWT(
         jwt.WithSecretKey("your-secret-key"),
         jwt.WithLogger(log),
         jwt.WithWhitelist(whitelist),

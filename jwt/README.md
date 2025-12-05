@@ -25,7 +25,7 @@ func main() {
     log := logger.New()
 
     // 创建 JWT 服务
-    j := jwt.New(
+    j := jwt.NewJWT(
         jwt.WithSecretKey("your-secret-key"),
         jwt.WithIssuer("my-service"),
         jwt.WithLogger(log),
@@ -248,7 +248,7 @@ whitelist := jwt.NewWhitelist().
     AddGRPCMethods("/grpc.health.v1.Health/").
     SetInternalServiceHeader("x-internal-service")
 
-j := jwt.New(
+j := jwt.NewJWT(
     jwt.WithSecretKey("secret"),
     jwt.WithLogger(log),
     jwt.WithWhitelist(whitelist),
@@ -260,7 +260,7 @@ j := jwt.New(
 启用缓存可以实现令牌撤销功能：
 
 ```go
-j := jwt.New(
+j := jwt.NewJWT(
     jwt.WithSecretKey("secret"),
     jwt.WithLogger(log),
     jwt.WithCache(redisCache),
@@ -343,7 +343,7 @@ func main() {
         AddHTTPPaths("/health", "/login")
 
     // JWT 服务
-    j := jwt.New(
+    j := jwt.NewJWT(
         jwt.WithSecretKey("your-secret-key"),
         jwt.WithIssuer("my-service"),
         jwt.WithAccessDuration(2 * time.Hour),

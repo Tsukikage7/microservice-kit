@@ -30,7 +30,7 @@ func (m *mockLogger) WithContext(ctx context.Context) logger.Logger { return m }
 func (m *mockLogger) Sync() error                               { return nil }
 func (m *mockLogger) Close() error                              { return nil }
 
-func TestNew(t *testing.T) {
+func TestNewDiscovery(t *testing.T) {
 	log := &mockLogger{}
 
 	tests := []struct {
@@ -82,7 +82,7 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d, err := New(tt.config, tt.logger)
+			d, err := NewDiscovery(tt.config, tt.logger)
 
 			if tt.wantErr == nil {
 				require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestMustNew_Success(t *testing.T) {
+func TestMustNewDiscovery_Success(t *testing.T) {
 	log := &mockLogger{}
 	config := &Config{
 		Type: TypeConsul,
@@ -104,22 +104,22 @@ func TestMustNew_Success(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		d := MustNew(config, log)
+		d := MustNewDiscovery(config, log)
 		assert.NotNil(t, d)
 		_ = d.Close()
 	})
 }
 
-func TestMustNew_Panic(t *testing.T) {
+func TestMustNewDiscovery_Panic(t *testing.T) {
 	log := &mockLogger{}
 
 	assert.Panics(t, func() {
-		MustNew(nil, log)
+		MustNewDiscovery(nil, log)
 	})
 
 	assert.Panics(t, func() {
 		config := &Config{Type: TypeConsul}
-		MustNew(config, nil)
+		MustNewDiscovery(config, nil)
 	})
 }
 

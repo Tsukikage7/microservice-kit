@@ -22,7 +22,7 @@ type ClaimsFactory func() Claims
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	endpoint = jwt.NewSigner(jwtService)(endpoint)
 func NewSigner(j *JWT) transport.Middleware {
 	return func(next transport.Endpoint) transport.Endpoint {
@@ -55,7 +55,7 @@ func NewSigner(j *JWT) transport.Middleware {
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	endpoint = jwt.NewParser(jwtService)(endpoint)
 func NewParser(j *JWT) transport.Middleware {
 	return func(next transport.Endpoint) transport.Endpoint {
@@ -92,7 +92,7 @@ func NewParser(j *JWT) transport.Middleware {
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	endpoint = jwt.NewParserWithClaims(jwtService, func() jwt.Claims {
 //	    return &CustomClaims{}
 //	})(endpoint)
@@ -131,7 +131,7 @@ func NewParserWithClaims(j *JWT, cf ClaimsFactory) transport.Middleware {
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	handler = jwt.HTTPMiddleware(jwtService)(handler)
 func HTTPMiddleware(j *JWT) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -172,7 +172,7 @@ func HTTPMiddleware(j *JWT) func(http.Handler) http.Handler {
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	handler = jwt.HTTPMiddlewareWithClaims(jwtService, func() jwt.Claims {
 //	    return &CustomClaims{}
 //	})(handler)
@@ -215,7 +215,7 @@ func HTTPMiddlewareWithClaims(j *JWT, cf ClaimsFactory) func(http.Handler) http.
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	server := grpc.NewServer(
 //	    grpc.UnaryInterceptor(jwt.UnaryServerInterceptor(jwtService)),
 //	)
@@ -292,7 +292,7 @@ func UnaryServerInterceptorWithClaims(j *JWT, cf ClaimsFactory) grpc.UnaryServer
 //
 // 使用示例:
 //
-//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	server := grpc.NewServer(
 //	    grpc.StreamInterceptor(jwt.StreamServerInterceptor(jwtService)),
 //	)

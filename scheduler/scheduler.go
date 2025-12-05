@@ -12,7 +12,7 @@
 // 示例：
 //
 //	// 创建调度器（使用 cache 包实现分布式锁）
-//	s := scheduler.MustNew(
+//	s := scheduler.MustNewScheduler(
 //	    scheduler.WithLogger(log),
 //	    scheduler.WithCache(redisCache),  // 复用 cache.Cache 接口
 //	)
@@ -63,14 +63,14 @@ type Scheduler interface {
 	Trigger(name string) error
 }
 
-// New 创建调度器.
-func New(opts ...Option) (Scheduler, error) {
+// NewScheduler 创建调度器.
+func NewScheduler(opts ...Option) (Scheduler, error) {
 	return newCronScheduler(opts...)
 }
 
-// MustNew 创建调度器，失败时 panic.
-func MustNew(opts ...Option) Scheduler {
-	s, err := New(opts...)
+// MustNewScheduler 创建调度器，失败时 panic.
+func MustNewScheduler(opts ...Option) Scheduler {
+	s, err := NewScheduler(opts...)
 	if err != nil {
 		panic(err)
 	}

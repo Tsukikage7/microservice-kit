@@ -2,9 +2,9 @@ package cache
 
 import "github.com/Tsukikage7/microservice-kit/logger"
 
-// New 创建缓存实例.
+// NewCache 创建缓存实例.
 // logger 是必需参数，不能为 nil.
-func New(config *Config, log logger.Logger) (Cache, error) {
+func NewCache(config *Config, log logger.Logger) (Cache, error) {
 	if log == nil {
 		return nil, ErrNilLogger
 	}
@@ -25,9 +25,9 @@ func New(config *Config, log logger.Logger) (Cache, error) {
 	}
 }
 
-// MustNew 创建缓存实例，失败时 panic.
-func MustNew(config *Config, log logger.Logger) Cache {
-	cache, err := New(config, log)
+// MustNewCache 创建缓存实例，失败时 panic.
+func MustNewCache(config *Config, log logger.Logger) Cache {
+	cache, err := NewCache(config, log)
 	if err != nil {
 		panic(err)
 	}

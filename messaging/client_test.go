@@ -44,7 +44,7 @@ func TestClientOptions(t *testing.T) {
 
 	t.Run("WithMetrics", func(t *testing.T) {
 		c := &Client{}
-		collector := metrics.MustNew(&metrics.Config{Namespace: "test"})
+		collector := metrics.MustNewMetrics(&metrics.Config{Namespace: "test"})
 		WithMetrics(collector)(c)
 		if c.metrics == nil {
 			t.Error("expected metrics to be set")

@@ -8,8 +8,8 @@ import (
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
-// New 创建一个新的服务发现实例.
-func New(config *Config, log logger.Logger) (Discovery, error) {
+// NewDiscovery 创建一个新的服务发现实例.
+func NewDiscovery(config *Config, log logger.Logger) (Discovery, error) {
 	if config == nil {
 		return nil, ErrNilConfig
 	}
@@ -35,7 +35,7 @@ func New(config *Config, log logger.Logger) (Discovery, error) {
 
 // MustNewDiscovery 创建服务发现实例，失败时 panic.
 func MustNewDiscovery(config *Config, log logger.Logger) Discovery {
-	d, err := New(config, log)
+	d, err := NewDiscovery(config, log)
 	if err != nil {
 		panic(err)
 	}

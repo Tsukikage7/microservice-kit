@@ -43,7 +43,7 @@ type testClaims struct {
 
 // newTestJWT 创建测试用 JWT 服务.
 func newTestJWT() *JWT {
-	return New(
+	return NewJWT(
 		WithSecretKey("test-secret-key-for-testing"),
 		WithLogger(&mockLogger{}),
 		WithIssuer("test-issuer"),
@@ -264,7 +264,7 @@ func TestNewParser_Whitelist(t *testing.T) {
 	whitelist := NewWhitelist()
 	whitelist.AddHTTPPaths("/health", "/metrics")
 
-	j := New(
+	j := NewJWT(
 		WithSecretKey("test-secret-key"),
 		WithLogger(&mockLogger{}),
 		WithWhitelist(whitelist),
@@ -444,7 +444,7 @@ func TestHTTPMiddleware_Whitelist(t *testing.T) {
 	whitelist := NewWhitelist()
 	whitelist.AddHTTPPaths("/health", "/public/")
 
-	j := New(
+	j := NewJWT(
 		WithSecretKey("test-secret-key"),
 		WithLogger(&mockLogger{}),
 		WithWhitelist(whitelist),
