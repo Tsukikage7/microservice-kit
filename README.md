@@ -17,7 +17,7 @@ go get github.com/Tsukikage7/microservice-kit
 | [trace](./trace/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
 | [ratelimit](./ratelimit/) | 限流（令牌桶、滑动窗口、分布式） | ✅ | ✅ | ✅ |
 | [retry](./retry/) | 重试机制（指数退避） | ✅ | ✅ | ✅ |
-| [jwt](./jwt/) | JWT 认证 | - | ✅ | ✅ |
+| [jwt](./jwt/) | JWT 认证 | ✅ | ✅ | ✅ |
 | [logger](./logger/) | 结构化日志（Zap） | - | - | - |
 | [config](./config/) | 配置管理（多源、热更新） | - | - | - |
 | [cache](./cache/) | 缓存（内存、Redis） | - | - | - |

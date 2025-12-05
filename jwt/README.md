@@ -6,7 +6,7 @@ JWT 认证服务，提供令牌生成、验证、刷新和撤销功能。
 
 - 生成、验证、刷新令牌
 - 可选的缓存集成（用于令牌撤销）
-- HTTP/gRPC 中间件
+- Endpoint/HTTP/gRPC 中间件
 - 白名单支持
 - 自定义 Claims
 - Functional Options 模式
@@ -97,6 +97,94 @@ token, err := j.Generate(claims)
 // 验证时使用自定义类型
 validatedClaims, err := j.ValidateWithClaims(token, &UserClaims{})
 userClaims := validatedClaims.(*UserClaims)
+```
+
+## Endpoint 中间件
+
+Endpoint 中间件用于 `transport.Endpoint` 层，参考 [go-kit/kit/auth/jwt](https://github.com/go-kit/kit/tree/master/auth/jwt) 设计模式。
+
+### NewSigner - 签名中间件（客户端）
+
+用于客户端在发起请求前签名令牌：
+
+```go
+import (
+    "github.com/Tsukikage7/microservice-kit/transport"
+    "github.com/Tsukikage7/microservice-kit/jwt"
+)
+
+// 创建签名中间件
+signerMiddleware := jwt.NewSigner(j)
+
+// 应用到 endpoint
+var clientEndpoint transport.Endpoint = func(ctx context.Context, req any) (any, error) {
+    // 令牌已存入上下文，可通过 jwt.TokenFromContext(ctx) 获取
+    return callRemoteService(ctx, req)
+}
+clientEndpoint = signerMiddleware(clientEndpoint)
+
+// 使用时将 Claims 放入上下文
+ctx := jwt.ContextWithClaims(context.Background(), claims)
+resp, err := clientEndpoint(ctx, request)
+```
+
+### NewParser - 解析中间件（服务端）
+
+用于服务端验证传入请求的令牌：
+
+```go
+// 创建解析中间件
+parserMiddleware := jwt.NewParser(j)
+
+// 应用到 endpoint
+var serverEndpoint transport.Endpoint = func(ctx context.Context, req any) (any, error) {
+    // 从上下文获取已验证的 Claims
+    claims, ok := jwt.ClaimsFromContext(ctx)
+    if ok {
+        subject := claims.GetSubject()
+        log.Printf("用户: %s", subject)
+    }
+    return process(req)
+}
+serverEndpoint = parserMiddleware(serverEndpoint)
+```
+
+### NewParserWithClaims - 自定义 Claims 解析
+
+```go
+// 使用自定义 Claims 类型
+parserMiddleware := jwt.NewParserWithClaims(j, func() jwt.Claims {
+    return &UserClaims{}
+})
+
+serverEndpoint = parserMiddleware(serverEndpoint)
+
+// 在 endpoint 中获取自定义 Claims
+claims, ok := jwt.ClaimsFromContext(ctx)
+if ok {
+    userClaims := claims.(*UserClaims)
+    log.Printf("用户ID: %d, 角色: %s", userClaims.UserID, userClaims.Role)
+}
+```
+
+### 与其他中间件组合
+
+```go
+// 服务端推荐顺序
+serverEndpoint = transport.Chain(
+    metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
+    trace.EndpointMiddleware("my-service", "MyMethod"),
+    ratelimit.EndpointMiddleware(limiter),
+    jwt.NewParser(j), // JWT 验证
+)(serverEndpoint)
+
+// 客户端推荐顺序
+clientEndpoint = transport.Chain(
+    metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
+    trace.EndpointMiddleware("my-service", "MyMethod"),
+    jwt.NewSigner(j), // JWT 签名
+    retry.EndpointMiddleware(retryConfig),
+)(clientEndpoint)
 ```
 
 ## HTTP 中间件

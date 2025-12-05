@@ -5,11 +5,127 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Tsukikage7/microservice-kit/transport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+// ClaimsFactory 是创建 Claims 实例的工厂函数.
+type ClaimsFactory func() Claims
+
+// NewSigner 创建签名中间件，用于生成 JWT 令牌并存入上下文.
+//
+// 此中间件从上下文获取 Claims，签名生成令牌后存入上下文，供后续传输层使用。
+// 适用于客户端在发起请求前签名令牌。
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	endpoint = jwt.NewSigner(jwtService)(endpoint)
+func NewSigner(j *JWT) transport.Middleware {
+	return func(next transport.Endpoint) transport.Endpoint {
+		return func(ctx context.Context, request any) (any, error) {
+			// 从上下文获取 Claims
+			claims, ok := ClaimsFromContext(ctx)
+			if !ok {
+				// 无 Claims 时直接调用下游
+				return next(ctx, request)
+			}
+
+			// 生成令牌
+			token, err := j.Generate(claims)
+			if err != nil {
+				return nil, err
+			}
+
+			// 将令牌存入上下文
+			ctx = ContextWithToken(ctx, token)
+
+			return next(ctx, request)
+		}
+	}
+}
+
+// NewParser 创建解析中间件，用于验证 JWT 令牌并将 Claims 存入上下文.
+//
+// 此中间件从上下文或请求中提取令牌，验证后将 Claims 存入上下文。
+// 适用于服务端验证传入请求的令牌。
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	endpoint = jwt.NewParser(jwtService)(endpoint)
+func NewParser(j *JWT) transport.Middleware {
+	return func(next transport.Endpoint) transport.Endpoint {
+		return func(ctx context.Context, request any) (any, error) {
+			// 检查白名单
+			if j.IsWhitelisted(ctx, request) {
+				return next(ctx, request)
+			}
+
+			// 提取令牌
+			token, err := j.ExtractToken(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+
+			// 验证令牌
+			claims, err := j.Validate(token)
+			if err != nil {
+				return nil, err
+			}
+
+			// 将 Claims 存入上下文
+			if c, ok := claims.(Claims); ok {
+				ctx = ContextWithClaims(ctx, c)
+				ctx = ContextWithToken(ctx, token)
+			}
+
+			return next(ctx, request)
+		}
+	}
+}
+
+// NewParserWithClaims 创建使用自定义 Claims 类型的解析中间件.
+//
+// 使用示例:
+//
+//	jwtService := jwt.New(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	endpoint = jwt.NewParserWithClaims(jwtService, func() jwt.Claims {
+//	    return &CustomClaims{}
+//	})(endpoint)
+func NewParserWithClaims(j *JWT, cf ClaimsFactory) transport.Middleware {
+	return func(next transport.Endpoint) transport.Endpoint {
+		return func(ctx context.Context, request any) (any, error) {
+			// 检查白名单
+			if j.IsWhitelisted(ctx, request) {
+				return next(ctx, request)
+			}
+
+			// 提取令牌
+			token, err := j.ExtractToken(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+
+			// 验证令牌（使用自定义 Claims 类型）
+			claims, err := j.ValidateWithClaims(token, cf())
+			if err != nil {
+				return nil, err
+			}
+
+			// 将 Claims 存入上下文
+			if c, ok := claims.(Claims); ok {
+				ctx = ContextWithClaims(ctx, c)
+				ctx = ContextWithToken(ctx, token)
+			}
+
+			return next(ctx, request)
+		}
+	}
+}
 
 // HTTPMiddleware 创建 HTTP 认证中间件.
 func (j *JWT) HTTPMiddleware(next http.Handler) http.Handler {
