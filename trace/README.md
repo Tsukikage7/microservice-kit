@@ -54,6 +54,29 @@ func NewTracer(cfg *TracingConfig, serviceName, serviceVersion string) (*trace.T
 func MustNewTracer(cfg *TracingConfig, serviceName, serviceVersion string) *trace.TracerProvider
 ```
 
+### Endpoint 中间件
+
+#### EndpointMiddleware
+
+返回 Endpoint 链路追踪中间件，用于 transport.Endpoint 层追踪。
+
+```go
+func EndpointMiddleware(serviceName, operationName string) transport.Middleware
+```
+
+#### EndpointTracer
+
+提供可配置的 Endpoint 链路追踪器。
+
+```go
+// 创建 Endpoint 链路追踪器
+tracer := trace.NewEndpointTracer("user-service")
+
+// 为不同方法创建中间件
+getUserEndpoint = tracer.Middleware("GetUser")(getUserEndpoint)
+listUsersEndpoint = tracer.Middleware("ListUsers")(listUsersEndpoint)
+```
+
 ### HTTP 中间件
 
 #### HTTPMiddleware

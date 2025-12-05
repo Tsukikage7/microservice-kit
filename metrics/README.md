@@ -75,6 +75,27 @@ func (c *Collector) RecordGRPCRequest(method, service, statusCode string, durati
 
 ### 中间件/拦截器
 
+#### EndpointMiddleware
+
+返回 Endpoint 指标采集中间件，用于 transport.Endpoint 层指标采集。
+
+```go
+func EndpointMiddleware(collector *PrometheusCollector, service, method string) transport.Middleware
+```
+
+#### EndpointInstrumenter
+
+提供可配置的 Endpoint 指标采集器。
+
+```go
+// 创建 Endpoint 指标采集器
+instrumenter := metrics.NewEndpointInstrumenter(collector, "user-service")
+
+// 为不同方法创建中间件
+getUserEndpoint = instrumenter.Middleware("GetUser")(getUserEndpoint)
+listUsersEndpoint = instrumenter.Middleware("ListUsers")(listUsersEndpoint)
+```
+
 #### HTTPMiddleware
 
 返回 HTTP 指标采集中间件，自动记录请求指标。

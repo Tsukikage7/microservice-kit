@@ -276,3 +276,236 @@ func TestHTTPMiddleware_DifferentStatusCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpointMiddleware(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	t.Run("成功请求", func(t *testing.T) {
+		endpoint := func(ctx context.Context, req any) (any, error) {
+			// 验证 context 中有 span
+			span := SpanFromContext(ctx)
+			assert.NotNil(t, span)
+			return "success", nil
+		}
+
+		middleware := EndpointMiddleware("test-service", "TestMethod")
+		wrapped := middleware(endpoint)
+
+		resp, err := wrapped(context.Background(), nil)
+
+		assert.NoError(t, err)
+		assert.Equal(t, "success", resp)
+	})
+
+	t.Run("失败请求", func(t *testing.T) {
+		testErr := errors.New("test error")
+		endpoint := func(ctx context.Context, req any) (any, error) {
+			return nil, testErr
+		}
+
+		middleware := EndpointMiddleware("test-service", "TestMethodError")
+		wrapped := middleware(endpoint)
+
+		resp, err := wrapped(context.Background(), nil)
+
+		assert.Error(t, err)
+		assert.Equal(t, testErr, err)
+		assert.Nil(t, resp)
+	})
+}
+
+func TestEndpointMiddleware_SpanCreation(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	var capturedCtx context.Context
+	endpoint := func(ctx context.Context, req any) (any, error) {
+		capturedCtx = ctx
+		return "ok", nil
+	}
+
+	middleware := EndpointMiddleware("test-service", "TestMethod")
+	wrapped := middleware(endpoint)
+
+	_, err := wrapped(context.Background(), nil)
+	assert.NoError(t, err)
+
+	// 验证 context 中有 span
+	span := SpanFromContext(capturedCtx)
+	assert.NotNil(t, span)
+}
+
+func TestEndpointMiddleware_NestedSpans(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	endpoint := func(ctx context.Context, req any) (any, error) {
+		// 创建子 span
+		ctx, span := StartSpan(ctx, "test-service", "child-operation")
+		defer span.End()
+
+		// 添加事件
+		AddSpanEvent(ctx, "processing")
+
+		return "ok", nil
+	}
+
+	middleware := EndpointMiddleware("test-service", "ParentMethod")
+	wrapped := middleware(endpoint)
+
+	resp, err := wrapped(context.Background(), nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "ok", resp)
+}
+
+func TestEndpointTracer(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	tracer := NewEndpointTracer("user-service")
+
+	t.Run("创建多个方法中间件", func(t *testing.T) {
+		endpoint1 := func(ctx context.Context, req any) (any, error) {
+			return "user", nil
+		}
+		endpoint2 := func(ctx context.Context, req any) (any, error) {
+			return []string{"user1", "user2"}, nil
+		}
+
+		wrapped1 := tracer.Middleware("GetUser")(endpoint1)
+		wrapped2 := tracer.Middleware("ListUsers")(endpoint2)
+
+		resp1, err1 := wrapped1(context.Background(), nil)
+		resp2, err2 := wrapped2(context.Background(), nil)
+
+		assert.NoError(t, err1)
+		assert.Equal(t, "user", resp1)
+		assert.NoError(t, err2)
+		assert.Equal(t, []string{"user1", "user2"}, resp2)
+	})
+
+	t.Run("不同服务名", func(t *testing.T) {
+		tracer2 := NewEndpointTracer("order-service")
+
+		endpoint := func(ctx context.Context, req any) (any, error) {
+			return "order", nil
+		}
+
+		wrapped := tracer2.Middleware("GetOrder")(endpoint)
+
+		resp, err := wrapped(context.Background(), nil)
+
+		assert.NoError(t, err)
+		assert.Equal(t, "order", resp)
+	})
+}
+
+func TestEndpointMiddleware_WithContext(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	t.Run("上下文取消", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // 立即取消
+
+		endpoint := func(ctx context.Context, req any) (any, error) {
+			return nil, ctx.Err()
+		}
+
+		middleware := EndpointMiddleware("test-service", "CancelledMethod")
+		wrapped := middleware(endpoint)
+
+		resp, err := wrapped(ctx, nil)
+
+		assert.Error(t, err)
+		assert.Equal(t, context.Canceled, err)
+		assert.Nil(t, resp)
+	})
+}
+
+func TestEndpointMiddleware_Concurrent(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	endpoint := func(ctx context.Context, req any) (any, error) {
+		// 验证每个 goroutine 都有自己的 span
+		span := SpanFromContext(ctx)
+		assert.NotNil(t, span)
+		return "ok", nil
+	}
+
+	middleware := EndpointMiddleware("test-service", "ConcurrentMethod")
+	wrapped := middleware(endpoint)
+
+	// 并发调用
+	done := make(chan bool, 100)
+	for i := 0; i < 100; i++ {
+		go func() {
+			resp, err := wrapped(context.Background(), nil)
+			assert.NoError(t, err)
+			assert.Equal(t, "ok", resp)
+			done <- true
+		}()
+	}
+
+	// 等待所有 goroutine 完成
+	for i := 0; i < 100; i++ {
+		<-done
+	}
+}
+
+func TestEndpointMiddleware_ErrorRecording(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	testErr := errors.New("database connection failed")
+
+	endpoint := func(ctx context.Context, req any) (any, error) {
+		return nil, testErr
+	}
+
+	middleware := EndpointMiddleware("test-service", "FailingMethod")
+	wrapped := middleware(endpoint)
+
+	resp, err := wrapped(context.Background(), nil)
+
+	assert.Error(t, err)
+	assert.Equal(t, testErr, err)
+	assert.Nil(t, resp)
+}
+
+func TestEndpointMiddleware_RequestPassthrough(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	type TestRequest struct {
+		ID   string
+		Name string
+	}
+
+	type TestResponse struct {
+		Success bool
+		Data    string
+	}
+
+	endpoint := func(ctx context.Context, req any) (any, error) {
+		r := req.(*TestRequest)
+		return &TestResponse{
+			Success: true,
+			Data:    r.Name,
+		}, nil
+	}
+
+	middleware := EndpointMiddleware("test-service", "ProcessRequest")
+	wrapped := middleware(endpoint)
+
+	req := &TestRequest{ID: "123", Name: "test"}
+	resp, err := wrapped(context.Background(), req)
+
+	assert.NoError(t, err)
+	result := resp.(*TestResponse)
+	assert.True(t, result.Success)
+	assert.Equal(t, "test", result.Data)
+}

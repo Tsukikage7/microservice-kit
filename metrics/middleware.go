@@ -1,9 +1,12 @@
 package metrics
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
 // HTTPMiddleware 返回 HTTP 指标采集中间件.
@@ -53,4 +56,48 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(b)
 	rw.size += n
 	return n, err
+}
+
+// EndpointMiddleware 返回 Endpoint 指标采集中间件.
+//
+// 使用示例:
+//
+//	collector, _ := metrics.New(cfg)
+//	endpoint = metrics.EndpointMiddleware(collector, "my-service", "GetUser")(endpoint)
+func EndpointMiddleware(collector *PrometheusCollector, service, method string) transport.Middleware {
+	return func(next transport.Endpoint) transport.Endpoint {
+		return func(ctx context.Context, request any) (response any, err error) {
+			start := time.Now()
+
+			response, err = next(ctx, request)
+
+			// 记录指标
+			statusCode := "OK"
+			if err != nil {
+				statusCode = "ERROR"
+			}
+			collector.RecordGRPCRequest(method, service, statusCode, time.Since(start))
+
+			return response, err
+		}
+	}
+}
+
+// EndpointInstrumenter 提供可配置的 Endpoint 指标采集.
+type EndpointInstrumenter struct {
+	collector *PrometheusCollector
+	service   string
+}
+
+// NewEndpointInstrumenter 创建 Endpoint 指标采集器.
+func NewEndpointInstrumenter(collector *PrometheusCollector, service string) *EndpointInstrumenter {
+	return &EndpointInstrumenter{
+		collector: collector,
+		service:   service,
+	}
+}
+
+// Middleware 返回指定方法的指标中间件.
+func (i *EndpointInstrumenter) Middleware(method string) transport.Middleware {
+	return EndpointMiddleware(i.collector, i.service, method)
 }

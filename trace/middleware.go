@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Tsukikage7/microservice-kit/transport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -134,4 +135,51 @@ func SpanID(ctx context.Context) string {
 		return span.SpanContext().SpanID().String()
 	}
 	return ""
+}
+
+// EndpointMiddleware 返回 Endpoint 链路追踪中间件.
+//
+// 使用示例:
+//
+//	endpoint = trace.EndpointMiddleware("my-service", "GetUser")(endpoint)
+func EndpointMiddleware(serviceName, operationName string) transport.Middleware {
+	return func(next transport.Endpoint) transport.Endpoint {
+		return func(ctx context.Context, request any) (response any, err error) {
+			tracer := otel.Tracer(serviceName)
+			ctx, span := tracer.Start(ctx, operationName,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(
+					attribute.String("service.name", serviceName),
+					attribute.String("operation.name", operationName),
+				),
+			)
+			defer span.End()
+
+			response, err = next(ctx, request)
+
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+
+			return response, err
+		}
+	}
+}
+
+// EndpointTracer 提供可配置的 Endpoint 链路追踪.
+type EndpointTracer struct {
+	serviceName string
+}
+
+// NewEndpointTracer 创建 Endpoint 链路追踪器.
+func NewEndpointTracer(serviceName string) *EndpointTracer {
+	return &EndpointTracer{
+		serviceName: serviceName,
+	}
+}
+
+// Middleware 返回指定操作的追踪中间件.
+func (t *EndpointTracer) Middleware(operationName string) transport.Middleware {
+	return EndpointMiddleware(t.serviceName, operationName)
 }
