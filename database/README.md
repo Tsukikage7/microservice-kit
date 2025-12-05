@@ -100,10 +100,10 @@ host=localhost user=user password=pass dbname=dbname port=5432 sslmode=disable
 
 ```go
 type BaseModel struct {
-    ID        uint           `gorm:"primaryKey"`
-    CreatedAt time.Time      `gorm:"autoCreateTime"`
-    UpdatedAt time.Time      `gorm:"autoUpdateTime"`
-    DeletedAt gorm.DeletedAt `gorm:"index"`
+    ID          uint           `gorm:"primaryKey"`
+    CreatedTime time.Time      `gorm:"column:created_time;autoCreateTime"`
+    UpdatedTime time.Time      `gorm:"column:updated_time;autoUpdateTime"`
+    DeletedTime gorm.DeletedAt `gorm:"column:deleted_time;index"`
 }
 
 // 在你的模型中使用

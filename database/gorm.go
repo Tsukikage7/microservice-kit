@@ -16,10 +16,10 @@ import (
 
 // BaseModel GORM 基础模型.
 type BaseModel struct {
-	ID        uint           `gorm:"primaryKey"`
-	CreatedAt time.Time      `gorm:"autoCreateTime"`
-	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	ID          uint           `gorm:"primaryKey"`
+	CreatedTime time.Time      `gorm:"column:created_time;autoCreateTime"`
+	UpdatedTime time.Time      `gorm:"column:updated_time;autoUpdateTime"`
+	DeletedTime gorm.DeletedAt `gorm:"column:deleted_time;index"`
 }
 
 // gormDatabase GORM 数据库实现.
