@@ -26,15 +26,34 @@ type Server interface {
 	Addr() string
 }
 
-// AppOption App 配置选项.
-
 // ApplicationConfig 应用程序配置，支持从配置文件加载.
 type ApplicationConfig struct {
 	Name            string        `json:"name" toml:"name" yaml:"name" mapstructure:"name"`
 	Version         string        `json:"version" toml:"version" yaml:"version" mapstructure:"version"`
 	GracefulTimeout time.Duration `json:"graceful_timeout" toml:"graceful_timeout" yaml:"graceful_timeout" mapstructure:"graceful_timeout"`
+	HTTP            HTTPConfig    `json:"http" toml:"http" yaml:"http" mapstructure:"http"`
+	GRPC            GRPCConfig    `json:"grpc" toml:"grpc" yaml:"grpc" mapstructure:"grpc"`
 }
 
+// HTTPConfig HTTP 服务器配置.
+type HTTPConfig struct {
+	Name         string        `json:"name" toml:"name" yaml:"name" mapstructure:"name"`
+	Addr         string        `json:"addr" toml:"addr" yaml:"addr" mapstructure:"addr"`
+	ReadTimeout  time.Duration `json:"read_timeout" toml:"read_timeout" yaml:"read_timeout" mapstructure:"read_timeout"`
+	WriteTimeout time.Duration `json:"write_timeout" toml:"write_timeout" yaml:"write_timeout" mapstructure:"write_timeout"`
+	IdleTimeout  time.Duration `json:"idle_timeout" toml:"idle_timeout" yaml:"idle_timeout" mapstructure:"idle_timeout"`
+}
+
+// GRPCConfig gRPC 服务器配置.
+type GRPCConfig struct {
+	Name             string        `json:"name" toml:"name" yaml:"name" mapstructure:"name"`
+	Addr             string        `json:"addr" toml:"addr" yaml:"addr" mapstructure:"addr"`
+	EnableReflection bool          `json:"enable_reflection" toml:"enable_reflection" yaml:"enable_reflection" mapstructure:"enable_reflection"`
+	KeepaliveTime    time.Duration `json:"keepalive_time" toml:"keepalive_time" yaml:"keepalive_time" mapstructure:"keepalive_time"`
+	KeepaliveTimeout time.Duration `json:"keepalive_timeout" toml:"keepalive_timeout" yaml:"keepalive_timeout" mapstructure:"keepalive_timeout"`
+}
+
+// AppOption App 配置选项.
 type AppOption func(*appOptions)
 
 // appOptions App 内部配置.

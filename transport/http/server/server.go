@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
 // Server HTTP 服务器.
@@ -143,6 +144,29 @@ func WithWriteTimeout(d time.Duration) Option {
 func WithIdleTimeout(d time.Duration) Option {
 	return func(o *options) {
 		o.idleTimeout = d
+	}
+}
+
+
+// WithConfig 从配置结构体设置服务器选项.
+// 仅设置非零值字段，零值字段将保持默认值.
+func WithConfig(cfg transport.HTTPConfig) Option {
+	return func(o *options) {
+		if cfg.Name != "" {
+			o.name = cfg.Name
+		}
+		if cfg.Addr != "" {
+			o.addr = cfg.Addr
+		}
+		if cfg.ReadTimeout > 0 {
+			o.readTimeout = cfg.ReadTimeout
+		}
+		if cfg.WriteTimeout > 0 {
+			o.writeTimeout = cfg.WriteTimeout
+		}
+		if cfg.IdleTimeout > 0 {
+			o.idleTimeout = cfg.IdleTimeout
+		}
 	}
 }
 

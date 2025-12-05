@@ -33,8 +33,8 @@ func New(config *Config, log logger.Logger) (Discovery, error) {
 	}
 }
 
-// MustNew 创建服务发现实例，失败时 panic.
-func MustNew(config *Config, log logger.Logger) Discovery {
+// MustNewDiscovery 创建服务发现实例，失败时 panic.
+func MustNewDiscovery(config *Config, log logger.Logger) Discovery {
 	d, err := New(config, log)
 	if err != nil {
 		panic(err)

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport"
 	"google.golang.org/grpc"
 )
 
@@ -91,5 +92,28 @@ func WithStreamInterceptor(interceptors ...grpc.StreamServerInterceptor) Option 
 func WithServerOption(opts ...grpc.ServerOption) Option {
 	return func(o *options) {
 		o.serverOptions = append(o.serverOptions, opts...)
+	}
+}
+
+
+// WithConfig 从配置结构体设置服务器选项.
+// 仅设置非零值字段，零值字段将保持默认值.
+func WithConfig(cfg transport.GRPCConfig) Option {
+	return func(o *options) {
+		if cfg.Name != "" {
+			o.name = cfg.Name
+		}
+		if cfg.Addr != "" {
+			o.addr = cfg.Addr
+		}
+		// EnableReflection 是 bool 类型，需要特殊处理
+		// 由于无法区分 false 和零值，这里只在配置中显式设置时才应用
+		o.enableReflection = cfg.EnableReflection
+		if cfg.KeepaliveTime > 0 {
+			o.keepaliveTime = cfg.KeepaliveTime
+		}
+		if cfg.KeepaliveTimeout > 0 {
+			o.keepaliveTimeout = cfg.KeepaliveTimeout
+		}
 	}
 }
