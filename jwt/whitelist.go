@@ -1,0 +1,115 @@
+package jwt
+
+import (
+	"context"
+	"net/http"
+	"strings"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+)
+
+// Whitelist 白名单配置.
+type Whitelist struct {
+	// HTTPPaths HTTP 路径白名单（支持前缀匹配）.
+	HTTPPaths []string
+
+	// GRPCMethods gRPC 方法白名单（支持前缀匹配）.
+	GRPCMethods []string
+
+	// InternalServiceHeader 内部服务标识 Header.
+	//
+	// 默认: "x-internal-service".
+	InternalServiceHeader string
+}
+
+// NewWhitelist 创建白名单.
+func NewWhitelist() *Whitelist {
+	return &Whitelist{
+		InternalServiceHeader: "x-internal-service",
+	}
+}
+
+// AddHTTPPaths 添加 HTTP 路径白名单.
+func (w *Whitelist) AddHTTPPaths(paths ...string) *Whitelist {
+	w.HTTPPaths = append(w.HTTPPaths, paths...)
+	return w
+}
+
+// AddGRPCMethods 添加 gRPC 方法白名单.
+func (w *Whitelist) AddGRPCMethods(methods ...string) *Whitelist {
+	w.GRPCMethods = append(w.GRPCMethods, methods...)
+	return w
+}
+
+// SetInternalServiceHeader 设置内部服务标识 Header.
+func (w *Whitelist) SetInternalServiceHeader(header string) *Whitelist {
+	w.InternalServiceHeader = header
+	return w
+}
+
+// IsWhitelisted 检查请求是否在白名单中.
+func (w *Whitelist) IsWhitelisted(ctx context.Context, req any) bool {
+	if w == nil {
+		return false
+	}
+
+	// 检查内部服务调用
+	if w.isInternalService(ctx) {
+		return true
+	}
+
+	// 检查 HTTP 请求
+	if httpReq, ok := req.(*http.Request); ok {
+		return w.isHTTPPathWhitelisted(httpReq.URL.Path)
+	}
+
+	// 检查 gRPC 方法
+	if method, ok := grpc.Method(ctx); ok {
+		return w.isGRPCMethodWhitelisted(method)
+	}
+
+	// 备用：从 metadata 获取路径
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if paths := md.Get(":path"); len(paths) > 0 {
+			return w.isGRPCMethodWhitelisted(paths[0])
+		}
+	}
+
+	return false
+}
+
+// isInternalService 检查是否为内部服务调用.
+func (w *Whitelist) isInternalService(ctx context.Context) bool {
+	if w.InternalServiceHeader == "" {
+		return false
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+
+	services := md.Get(w.InternalServiceHeader)
+	return len(services) > 0
+}
+
+// isHTTPPathWhitelisted 检查 HTTP 路径是否在白名单.
+func (w *Whitelist) isHTTPPathWhitelisted(path string) bool {
+	for _, whitelistPath := range w.HTTPPaths {
+		if strings.HasPrefix(path, whitelistPath) {
+			return true
+		}
+	}
+	return false
+}
+
+// isGRPCMethodWhitelisted 检查 gRPC 方法是否在白名单.
+func (w *Whitelist) isGRPCMethodWhitelisted(method string) bool {
+	for _, whitelistMethod := range w.GRPCMethods {
+		if strings.HasPrefix(method, whitelistMethod) {
+			return true
+		}
+	}
+	return false
+}
