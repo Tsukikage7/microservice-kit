@@ -67,6 +67,7 @@ __debug_bin*
 .sourcegraph/
 .windsurf/
 .spec-workflow/
+.serena/
 
 # AI 生成的上下文/缓存
 .claude_context

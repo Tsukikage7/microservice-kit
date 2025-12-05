@@ -27,6 +27,14 @@ type Server interface {
 }
 
 // AppOption App 配置选项.
+
+// ApplicationConfig 应用程序配置，支持从配置文件加载.
+type ApplicationConfig struct {
+	Name            string        `json:"name" toml:"name" yaml:"name" mapstructure:"name"`
+	Version         string        `json:"version" toml:"version" yaml:"version" mapstructure:"version"`
+	GracefulTimeout time.Duration `json:"graceful_timeout" toml:"graceful_timeout" yaml:"graceful_timeout" mapstructure:"graceful_timeout"`
+}
+
 type AppOption func(*appOptions)
 
 // appOptions App 内部配置.
@@ -94,8 +102,25 @@ func WithSignals(signals ...os.Signal) AppOption {
 	}
 }
 
-// App 应用程序，管理多个服务器的生命周期.
-type App struct {
+
+// WithConfig 从配置结构体设置应用选项.
+// 仅设置非零值字段，零值字段将保持默认值.
+func WithConfig(cfg ApplicationConfig) AppOption {
+	return func(o *appOptions) {
+		if cfg.Name != "" {
+			o.name = cfg.Name
+		}
+		if cfg.Version != "" {
+			o.version = cfg.Version
+		}
+		if cfg.GracefulTimeout > 0 {
+			o.gracefulTimeout = cfg.GracefulTimeout
+		}
+	}
+}
+
+// Application 应用程序，管理多个服务器的生命周期.
+type Application struct {
 	opts    *appOptions
 	servers []Server
 	ctx     context.Context
@@ -104,10 +129,10 @@ type App struct {
 	running bool
 }
 
-// NewApp 创建应用程序.
+// NewApplication 创建应用程序.
 //
 // 如果未设置 logger，会 panic.
-func NewApp(opts ...AppOption) *App {
+func NewApplication(opts ...AppOption) *Application {
 	o := defaultAppOptions()
 	for _, opt := range opts {
 		opt(o)
@@ -119,7 +144,7 @@ func NewApp(opts ...AppOption) *App {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &App{
+	return &Application{
 		opts:   o,
 		ctx:    ctx,
 		cancel: cancel,
@@ -129,7 +154,7 @@ func NewApp(opts ...AppOption) *App {
 // Use 注册服务器.
 //
 // 支持链式调用.
-func (a *App) Use(servers ...Server) *App {
+func (a *Application) Use(servers ...Server) *Application {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -140,7 +165,7 @@ func (a *App) Use(servers ...Server) *App {
 // Run 运行应用程序.
 //
 // 阻塞直到收到关闭信号或调用 Stop.
-func (a *App) Run() error {
+func (a *Application) Run() error {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -171,27 +196,27 @@ func (a *App) Run() error {
 }
 
 // Stop 主动停止应用程序.
-func (a *App) Stop() {
+func (a *Application) Stop() {
 	a.cancel()
 }
 
 // Context 获取应用上下文.
-func (a *App) Context() context.Context {
+func (a *Application) Context() context.Context {
 	return a.ctx
 }
 
 // Name 获取应用名称.
-func (a *App) Name() string {
+func (a *Application) Name() string {
 	return a.opts.name
 }
 
 // Version 获取应用版本.
-func (a *App) Version() string {
+func (a *Application) Version() string {
 	return a.opts.version
 }
 
 // start 启动所有服务器.
-func (a *App) start() error {
+func (a *Application) start() error {
 	if len(a.servers) == 0 {
 		a.opts.logger.Warnf("[%s] 没有注册任何服务器", a.opts.name)
 		return nil
@@ -221,7 +246,7 @@ func (a *App) start() error {
 }
 
 // waitForShutdown 等待关闭信号.
-func (a *App) waitForShutdown() error {
+func (a *Application) waitForShutdown() error {
 	signals := a.opts.signals
 	if len(signals) == 0 {
 		signals = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
@@ -242,7 +267,7 @@ func (a *App) waitForShutdown() error {
 }
 
 // shutdown 优雅关闭.
-func (a *App) shutdown() error {
+func (a *Application) shutdown() error {
 	a.opts.logger.Infof("[%s] 开始优雅关闭 [timeout:%v]", a.opts.name, a.opts.gracefulTimeout)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.opts.gracefulTimeout)

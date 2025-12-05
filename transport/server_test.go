@@ -66,10 +66,10 @@ func (m *mockServer) Stop(ctx context.Context) error {
 func (m *mockServer) Name() string { return m.name }
 func (m *mockServer) Addr() string { return m.addr }
 
-func TestNewApp(t *testing.T) {
+func TestNewApplication(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
 		log := newMockLogger()
-		app := NewApp(
+		app := NewApplication(
 			WithName("test-app"),
 			WithVersion("1.0.0"),
 			WithLogger(log),
@@ -89,13 +89,13 @@ func TestNewApp(t *testing.T) {
 				t.Error("expected panic when logger not set")
 			}
 		}()
-		NewApp(WithName("test"))
+		NewApplication(WithName("test"))
 	})
 }
 
-func TestApp_Use(t *testing.T) {
+func TestApplication_Use(t *testing.T) {
 	log := newMockLogger()
-	app := NewApp(WithLogger(log))
+	app := NewApplication(WithLogger(log))
 
 	srv1 := &mockServer{name: "srv1", addr: ":8080"}
 	srv2 := &mockServer{name: "srv2", addr: ":9090"}
@@ -107,11 +107,11 @@ func TestApp_Use(t *testing.T) {
 	}
 }
 
-func TestApp_RunAndStop(t *testing.T) {
+func TestApplication_RunAndStop(t *testing.T) {
 	log := newMockLogger()
 	srv := &mockServer{name: "test", addr: ":8080"}
 
-	app := NewApp(
+	app := NewApplication(
 		WithName("test-app"),
 		WithLogger(log),
 		WithGracefulTimeout(1*time.Second),
@@ -137,9 +137,9 @@ func TestApp_RunAndStop(t *testing.T) {
 	}
 }
 
-func TestApp_RunWithNoServers(t *testing.T) {
+func TestApplication_RunWithNoServers(t *testing.T) {
 	log := newMockLogger()
-	app := NewApp(
+	app := NewApplication(
 		WithName("test-app"),
 		WithLogger(log),
 	)
@@ -160,9 +160,9 @@ func TestApp_RunWithNoServers(t *testing.T) {
 	}
 }
 
-func TestApp_RunAlreadyRunning(t *testing.T) {
+func TestApplication_RunAlreadyRunning(t *testing.T) {
 	log := newMockLogger()
-	app := NewApp(
+	app := NewApplication(
 		WithName("test-app"),
 		WithLogger(log),
 	)
@@ -176,9 +176,9 @@ func TestApp_RunAlreadyRunning(t *testing.T) {
 	}
 }
 
-func TestApp_Context(t *testing.T) {
+func TestApplication_Context(t *testing.T) {
 	log := newMockLogger()
-	app := NewApp(WithLogger(log))
+	app := NewApplication(WithLogger(log))
 
 	ctx := app.Context()
 	if ctx == nil {
@@ -186,11 +186,11 @@ func TestApp_Context(t *testing.T) {
 	}
 }
 
-func TestAppOptions(t *testing.T) {
+func TestApplicationOptions(t *testing.T) {
 	log := newMockLogger()
 
 	t.Run("WithGracefulTimeout", func(t *testing.T) {
-		app := NewApp(
+		app := NewApplication(
 			WithLogger(log),
 			WithGracefulTimeout(5*time.Second),
 		)
@@ -200,7 +200,7 @@ func TestAppOptions(t *testing.T) {
 	})
 
 	t.Run("WithSignals", func(t *testing.T) {
-		app := NewApp(
+		app := NewApplication(
 			WithLogger(log),
 		)
 		// 默认应该有信号处理
