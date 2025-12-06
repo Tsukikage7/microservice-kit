@@ -1,21 +1,14 @@
+// Package cqrs 实现CQRS模式的命令和查询处理.
 package cqrs
 
 import "context"
 
-// CommandHandler 命令处理器.
-type CommandHandler[C any] func(ctx context.Context, cmd C) error
-
-// CommandBus 命令总线.
-type CommandBus[C any] struct {
-	handler CommandHandler[C]
+// CommandHandler 命令处理器接口.
+type CommandHandler[C, R any] interface {
+	Handle(ctx context.Context, cmd C) (C, R, error)
 }
 
-// NewCommandBus 创建命令总线.
-func NewCommandBus[C any](handler CommandHandler[C]) *CommandBus[C] {
-	return &CommandBus[C]{handler: handler}
-}
-
-// Dispatch 分发命令.
-func (b *CommandBus[C]) Dispatch(ctx context.Context, cmd C) error {
-	return b.handler(ctx, cmd)
+// ApplyCommand 应用命令处理器.
+func ApplyCommand[C, R any](ctx context.Context, cmd C, handler CommandHandler[C, R]) (C, R, error) {
+	return handler.Handle(ctx, cmd)
 }
