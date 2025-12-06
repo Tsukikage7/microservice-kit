@@ -15,8 +15,8 @@ import (
 )
 
 // BaseModel GORM 基础模型.
-type BaseModel struct {
-	ID          uint           `gorm:"primaryKey"`
+type BaseModel[T any] struct {
+	ID          T              `gorm:"primaryKey"`
 	CreatedTime time.Time      `gorm:"column:created_time;autoCreateTime"`
 	UpdatedTime time.Time      `gorm:"column:updated_time;autoUpdateTime"`
 	DeletedTime gorm.DeletedAt `gorm:"column:deleted_time;index"`
