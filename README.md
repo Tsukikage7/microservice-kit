@@ -32,7 +32,9 @@ go get github.com/Tsukikage7/microservice-kit
 | [discovery](./discovery/) | 服务发现（Consul、etcd） | `NewDiscovery` / `MustNewDiscovery` |
 | [messaging](./messaging/) | 消息队列（Kafka） | `NewClient` |
 | [scheduler](./scheduler/) | 定时任务调度 | `NewScheduler` / `MustNewScheduler` |
-| [ddd](./ddd/) | 领域驱动设计（DDD） | - |
+| [domain](./domain/) | 领域驱动设计（聚合根、事件） | `NewAggregateRoot` / `NewEventBus` |
+| [cqrs](./cqrs/) | 命令查询职责分离 | `NewCommandBus` / `NewQueryBus` |
+| [pbjson](./pbjson/) | Protobuf JSON 序列化 | `Marshal` / `Unmarshal` |
 
 ## 快速开始
 
@@ -465,7 +467,9 @@ defer scheduler.Stop()
 - **[discovery](./discovery/)** - 服务发现（Consul、etcd）
 - **[messaging](./messaging/)** - 消息队列（Kafka）
 - **[scheduler](./scheduler/)** - 定时任务调度
-- **[ddd](./ddd/)** - 领域驱动设计（实体、聚合、事件、CQRS）
+- **[domain](./domain/)** - 领域驱动设计（聚合根、领域事件）
+- **[cqrs](./cqrs/)** - 命令查询职责分离
+- **[pbjson](./pbjson/)** - Protobuf JSON 序列化（零值字段输出）
 
 ## 设计原则
 
