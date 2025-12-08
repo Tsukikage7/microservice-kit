@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
 
 // Server HTTP 服务器.
@@ -15,6 +16,9 @@ type Server struct {
 	opts    *options
 	handler http.Handler
 	server  *http.Server
+
+	// 内置健康检查
+	health *health.Health
 }
 
 // New 创建 HTTP 服务器，如果未设置 logger 会 panic.
@@ -28,9 +32,18 @@ func New(handler http.Handler, opts ...Option) *Server {
 		panic("http server: 必须设置 logger")
 	}
 
+	// 创建内置健康检查管理器
+	healthOpts := []health.Option{health.WithTimeout(o.healthTimeout)}
+	healthOpts = append(healthOpts, o.healthOptions...)
+	h := health.New(healthOpts...)
+
+	// 使用健康检查中间件包装 handler
+	wrappedHandler := health.Middleware(h)(handler)
+
 	return &Server{
 		opts:    o,
-		handler: handler,
+		handler: wrappedHandler,
+		health:  h,
 	}
 }
 
@@ -88,27 +101,44 @@ func (s *Server) Handler() http.Handler {
 	return s.handler
 }
 
+// Health 返回健康检查管理器.
+func (s *Server) Health() *health.Health {
+	return s.health
+}
+
+// HealthEndpoint 返回健康检查端点信息.
+func (s *Server) HealthEndpoint() *transport.HealthEndpoint {
+	return &transport.HealthEndpoint{
+		Type: transport.HealthCheckTypeHTTP,
+		Addr: s.opts.addr,
+		Path: health.DefaultLivenessPath,
+	}
+}
+
 // Option 配置选项函数.
 type Option func(*options)
 
 // options 服务器配置.
 type options struct {
-	name         string
-	addr         string
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	idleTimeout  time.Duration
-	logger       logger.Logger
+	name          string
+	addr          string
+	readTimeout   time.Duration
+	writeTimeout  time.Duration
+	idleTimeout   time.Duration
+	logger        logger.Logger
+	healthTimeout time.Duration
+	healthOptions []health.Option
 }
 
 // defaultOptions 返回默认配置.
 func defaultOptions() *options {
 	return &options{
-		name:         "HTTP",
-		addr:         ":8080",
-		readTimeout:  30 * time.Second,
-		writeTimeout: 30 * time.Second,
-		idleTimeout:  120 * time.Second,
+		name:          "HTTP",
+		addr:          ":8080",
+		readTimeout:   30 * time.Second,
+		writeTimeout:  30 * time.Second,
+		idleTimeout:   120 * time.Second,
+		healthTimeout: 5 * time.Second,
 	}
 }
 
@@ -147,7 +177,6 @@ func WithIdleTimeout(d time.Duration) Option {
 	}
 }
 
-
 // WithConfig 从配置结构体设置服务器选项.
 // 仅设置非零值字段，零值字段将保持默认值.
 func WithConfig(cfg transport.HTTPConfig) Option {
@@ -176,3 +205,34 @@ func WithLogger(log logger.Logger) Option {
 		o.logger = log
 	}
 }
+
+// WithHealthTimeout 设置健康检查超时时间.
+func WithHealthTimeout(d time.Duration) Option {
+	return func(o *options) {
+		o.healthTimeout = d
+	}
+}
+
+// WithHealthOptions 添加健康检查选项.
+func WithHealthOptions(opts ...health.Option) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, opts...)
+	}
+}
+
+// WithReadinessChecker 添加就绪检查器（便捷方法）.
+func WithReadinessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithReadinessChecker(checkers...))
+	}
+}
+
+// WithLivenessChecker 添加存活检查器（便捷方法）.
+func WithLivenessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
+	}
+}
+
+// 确保 Server 实现了 transport.HealthCheckable 接口.
+var _ transport.HealthCheckable = (*Server)(nil)

@@ -13,12 +13,17 @@ const (
 	ProtocolGRPC = "grpc"
 )
 
-// 默认配置值.
+// 健康检查内部默认值（不对外暴露配置）.
 const (
-	DefaultHealthCheckInterval        = "10s"
-	DefaultHealthCheckTimeout         = "3s"
-	DefaultHealthCheckDeregisterAfter = "30s"
-	DefaultVersion                    = "1.0.0"
+	defaultHealthCheckInterval        = "10s"
+	defaultHealthCheckTimeout         = "3s"
+	defaultHealthCheckDeregisterAfter = "30s"
+	defaultHealthCheckHTTPPath        = "/healthz"
+)
+
+// 服务元数据默认值.
+const (
+	DefaultVersion = "1.0.0"
 )
 
 // Config 服务发现配置.
@@ -26,18 +31,8 @@ type Config struct {
 	Type string `json:"type" toml:"type" yaml:"type" mapstructure:"type"` // 服务发现类型
 	Addr string `json:"addr" toml:"addr" yaml:"addr" mapstructure:"addr"` // 服务发现地址
 
-	// 健康检查配置
-	HealthCheck HealthCheckConfig `json:"health_check" toml:"health_check" yaml:"health_check" mapstructure:"health_check"`
-
 	// 协议特定的服务元数据配置
 	Services ServiceConfig `json:"services" toml:"services" yaml:"services" mapstructure:"services"`
-}
-
-// HealthCheckConfig 健康检查配置.
-type HealthCheckConfig struct {
-	Interval        string `json:"interval" toml:"interval" yaml:"interval" mapstructure:"interval"`                                 // 检查间隔，默认10s
-	Timeout         string `json:"timeout" toml:"timeout" yaml:"timeout" mapstructure:"timeout"`                                     // 超时时间，默认3s
-	DeregisterAfter string `json:"deregister_after" toml:"deregister_after" yaml:"deregister_after" mapstructure:"deregister_after"` // 失败后注销时间，默认30s
 }
 
 // ServiceMetaConfig 服务元数据配置.
@@ -69,17 +64,6 @@ func (c *Config) Validate() error {
 
 // SetDefaults 设置默认配置.
 func (c *Config) SetDefaults() {
-	// 健康检查默认值
-	if c.HealthCheck.Interval == "" {
-		c.HealthCheck.Interval = DefaultHealthCheckInterval
-	}
-	if c.HealthCheck.Timeout == "" {
-		c.HealthCheck.Timeout = DefaultHealthCheckTimeout
-	}
-	if c.HealthCheck.DeregisterAfter == "" {
-		c.HealthCheck.DeregisterAfter = DefaultHealthCheckDeregisterAfter
-	}
-
 	// HTTP服务默认配置
 	if c.Services.HTTP.Version == "" {
 		c.Services.HTTP.Version = DefaultVersion

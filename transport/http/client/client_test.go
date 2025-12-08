@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
 // mockLogger 测试用 mock logger.
@@ -43,6 +44,9 @@ func (m *mockDiscovery) Register(ctx context.Context, serviceName, address strin
 	return "", nil
 }
 func (m *mockDiscovery) RegisterWithProtocol(ctx context.Context, serviceName, address, protocol string) (string, error) {
+	return "", nil
+}
+func (m *mockDiscovery) RegisterWithHealthEndpoint(ctx context.Context, serviceName, address, protocol string, healthEndpoint *transport.HealthEndpoint) (string, error) {
 	return "", nil
 }
 func (m *mockDiscovery) Unregister(ctx context.Context, serviceID string) error { return nil }

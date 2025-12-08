@@ -5,6 +5,7 @@ import (
 
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"google.golang.org/grpc"
 )
 
@@ -24,6 +25,8 @@ type options struct {
 	unaryInterceptors  []grpc.UnaryServerInterceptor
 	streamInterceptors []grpc.StreamServerInterceptor
 	serverOptions      []grpc.ServerOption
+	healthTimeout      time.Duration
+	healthOptions      []health.Option
 }
 
 // defaultOptions 返回默认配置.
@@ -35,6 +38,7 @@ func defaultOptions() *options {
 		keepaliveTime:    60 * time.Second,
 		keepaliveTimeout: 20 * time.Second,
 		minPingInterval:  20 * time.Second,
+		healthTimeout:    5 * time.Second,
 	}
 }
 
@@ -95,7 +99,6 @@ func WithServerOption(opts ...grpc.ServerOption) Option {
 	}
 }
 
-
 // WithConfig 从配置结构体设置服务器选项.
 // 仅设置非零值字段，零值字段将保持默认值.
 func WithConfig(cfg transport.GRPCConfig) Option {
@@ -115,5 +118,33 @@ func WithConfig(cfg transport.GRPCConfig) Option {
 		if cfg.KeepaliveTimeout > 0 {
 			o.keepaliveTimeout = cfg.KeepaliveTimeout
 		}
+	}
+}
+
+// WithHealthTimeout 设置健康检查超时时间.
+func WithHealthTimeout(d time.Duration) Option {
+	return func(o *options) {
+		o.healthTimeout = d
+	}
+}
+
+// WithHealthOptions 添加健康检查选项.
+func WithHealthOptions(opts ...health.Option) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, opts...)
+	}
+}
+
+// WithReadinessChecker 添加就绪检查器（便捷方法）.
+func WithReadinessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithReadinessChecker(checkers...))
+	}
+}
+
+// WithLivenessChecker 添加存活检查器（便捷方法）.
+func WithLivenessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
 	}
 }

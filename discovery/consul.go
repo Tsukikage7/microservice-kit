@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/hashicorp/consul/api"
 )
 
@@ -64,15 +65,7 @@ func (c *consulDiscovery) Register(ctx context.Context, serviceName, address str
 	serviceID := GenerateServiceID(serviceName)
 
 	// 创建健康检查配置
-	healthCheck := &api.AgentServiceCheck{
-		CheckID:                        fmt.Sprintf("%s-health", serviceID),
-		Name:                           fmt.Sprintf("%s Health Check", serviceName),
-		Notes:                          fmt.Sprintf("TCP端口健康检查 for %s", serviceName),
-		TCP:                            fmt.Sprintf("%s:%d", host, port),
-		Interval:                       c.config.HealthCheck.Interval,
-		Timeout:                        c.config.HealthCheck.Timeout,
-		DeregisterCriticalServiceAfter: c.config.HealthCheck.DeregisterAfter,
-	}
+	healthCheck := c.buildHealthCheck(serviceID, serviceName, host, port)
 
 	// 使用gRPC作为默认配置
 	defaultMeta := c.config.GetServiceConfig(ProtocolGRPC)
@@ -140,15 +133,7 @@ func (c *consulDiscovery) RegisterWithProtocol(ctx context.Context, serviceName,
 	serviceID := GenerateServiceID(fmt.Sprintf("%s-%s", serviceName, protocol))
 
 	// 创建协议特定的健康检查配置
-	healthCheck := &api.AgentServiceCheck{
-		CheckID:                        fmt.Sprintf("%s-health", serviceID),
-		Name:                           fmt.Sprintf("%s %s Health Check", serviceName, protocol),
-		Notes:                          fmt.Sprintf("TCP端口健康检查 for %s [%s]", serviceName, protocol),
-		TCP:                            fmt.Sprintf("%s:%d", host, port),
-		Interval:                       c.config.HealthCheck.Interval,
-		Timeout:                        c.config.HealthCheck.Timeout,
-		DeregisterCriticalServiceAfter: c.config.HealthCheck.DeregisterAfter,
-	}
+	healthCheck := c.buildHealthCheckWithProtocol(serviceID, serviceName, host, port, protocol)
 
 	// 使用协议特定的标签
 	tags := make([]string, 0, len(serviceMeta.Tags)+1)
@@ -188,6 +173,85 @@ func (c *consulDiscovery) RegisterWithProtocol(ctx context.Context, serviceName,
 		port,
 		serviceMeta.Version,
 		tags,
+	)
+
+	return serviceID, nil
+}
+
+// RegisterWithHealthEndpoint 使用指定的健康检查端点注册服务.
+func (c *consulDiscovery) RegisterWithHealthEndpoint(ctx context.Context, serviceName, address, protocol string, healthEndpoint *transport.HealthEndpoint) (string, error) {
+	if serviceName == "" {
+		return "", ErrEmptyName
+	}
+
+	if address == "" {
+		return "", ErrEmptyAddress
+	}
+
+	// 获取协议特定的元数据配置
+	serviceMeta := c.config.GetServiceConfig(protocol)
+	if serviceMeta.Protocol == "" {
+		return "", ErrUnsupportedProtocol
+	}
+
+	// 解析地址和端口
+	host, port, err := parseAddress(address)
+	if err != nil {
+		return "", err
+	}
+
+	// 如果host是0.0.0.0，转换为127.0.0.1
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+
+	// 生成协议特定的服务ID
+	serviceID := GenerateServiceID(fmt.Sprintf("%s-%s", serviceName, protocol))
+
+	// 创建健康检查配置
+	healthCheck := c.buildHealthCheckFromEndpoint(serviceID, serviceName, host, port, protocol, healthEndpoint)
+
+	// 使用协议特定的标签
+	tags := make([]string, 0, len(serviceMeta.Tags)+1)
+	tags = append(tags, serviceMeta.Tags...)
+	if !contains(tags, protocol) {
+		tags = append(tags, protocol)
+	}
+
+	registration := &api.AgentServiceRegistration{
+		ID:      serviceID,
+		Name:    serviceName,
+		Address: host,
+		Port:    port,
+		Tags:    tags,
+		Meta: map[string]string{
+			"version":  serviceMeta.Version,
+			"protocol": serviceMeta.Protocol,
+		},
+		Check: healthCheck,
+	}
+
+	// 使用context注册服务
+	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
+	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
+	if err != nil {
+		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [协议:%s] [地址:%s:%d] [错误:%v]",
+			serviceName, protocol, host, port, err)
+		return "", ErrRegister
+	}
+
+	healthType := "TCP"
+	if healthEndpoint != nil {
+		healthType = string(healthEndpoint.Type)
+	}
+	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s] [%s:%d] [健康检查:%s] [v%s]",
+		serviceName,
+		protocol,
+		serviceID,
+		host,
+		port,
+		healthType,
+		serviceMeta.Version,
 	)
 
 	return serviceID, nil
@@ -286,4 +350,85 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// buildHealthCheck 构建健康检查配置.
+func (c *consulDiscovery) buildHealthCheck(serviceID, serviceName, host string, port int) *api.AgentServiceCheck {
+	return c.buildHealthCheckWithProtocol(serviceID, serviceName, host, port, "")
+}
+
+// buildHealthCheckFromEndpoint 根据健康检查端点构建配置.
+func (c *consulDiscovery) buildHealthCheckFromEndpoint(serviceID, serviceName, host string, port int, protocol string, endpoint *transport.HealthEndpoint) *api.AgentServiceCheck {
+	check := &api.AgentServiceCheck{
+		CheckID:                        fmt.Sprintf("%s-health", serviceID),
+		Interval:                       defaultHealthCheckInterval,
+		Timeout:                        defaultHealthCheckTimeout,
+		DeregisterCriticalServiceAfter: defaultHealthCheckDeregisterAfter,
+	}
+
+	// 如果没有指定健康检查端点，使用默认 TCP 检查
+	if endpoint == nil {
+		check.Name = fmt.Sprintf("%s %s TCP Health Check", serviceName, protocol)
+		check.Notes = fmt.Sprintf("TCP端口健康检查 for %s [%s]", serviceName, protocol)
+		check.TCP = fmt.Sprintf("%s:%d", host, port)
+		return check
+	}
+
+	// 解析健康检查地址
+	healthHost, healthPort, err := parseAddress(endpoint.Addr)
+	if err != nil {
+		// 解析失败，使用服务地址
+		healthHost = host
+		healthPort = port
+	}
+	if healthHost == "" || healthHost == "0.0.0.0" {
+		healthHost = host
+	}
+
+	// 根据健康检查端点类型构建配置
+	switch endpoint.Type {
+	case transport.HealthCheckTypeHTTP:
+		path := endpoint.Path
+		if path == "" {
+			path = defaultHealthCheckHTTPPath
+		}
+		check.Name = fmt.Sprintf("%s %s HTTP Health Check", serviceName, protocol)
+		check.Notes = fmt.Sprintf("HTTP健康检查 for %s [%s]", serviceName, protocol)
+		check.HTTP = fmt.Sprintf("http://%s:%d%s", healthHost, healthPort, path)
+		check.Method = "GET"
+	case transport.HealthCheckTypeGRPC:
+		check.Name = fmt.Sprintf("%s %s gRPC Health Check", serviceName, protocol)
+		check.Notes = fmt.Sprintf("gRPC健康检查 for %s [%s]", serviceName, protocol)
+		check.GRPC = fmt.Sprintf("%s:%d", healthHost, healthPort)
+		check.GRPCUseTLS = false
+	default: // TCP
+		check.Name = fmt.Sprintf("%s %s TCP Health Check", serviceName, protocol)
+		check.Notes = fmt.Sprintf("TCP端口健康检查 for %s [%s]", serviceName, protocol)
+		check.TCP = fmt.Sprintf("%s:%d", healthHost, healthPort)
+	}
+
+	return check
+}
+
+// buildHealthCheckWithProtocol 根据协议构建健康检查配置（默认 TCP 检查）.
+// 注意：推荐使用 AddServer 方法，可自动检测健康检查类型.
+func (c *consulDiscovery) buildHealthCheckWithProtocol(serviceID, serviceName, host string, port int, protocol string) *api.AgentServiceCheck {
+	check := &api.AgentServiceCheck{
+		CheckID:                        fmt.Sprintf("%s-health", serviceID),
+		Interval:                       defaultHealthCheckInterval,
+		Timeout:                        defaultHealthCheckTimeout,
+		DeregisterCriticalServiceAfter: defaultHealthCheckDeregisterAfter,
+	}
+
+	// 默认使用 TCP 端口检查
+	if protocol != "" {
+		check.Name = fmt.Sprintf("%s %s TCP Health Check", serviceName, protocol)
+		check.Notes = fmt.Sprintf("TCP端口健康检查 for %s [%s]", serviceName, protocol)
+	} else {
+		check.Name = fmt.Sprintf("%s TCP Health Check", serviceName)
+		check.Notes = fmt.Sprintf("TCP端口健康检查 for %s", serviceName)
+	}
+	check.TCP = fmt.Sprintf("%s:%d", host, port)
+
+	return check
 }

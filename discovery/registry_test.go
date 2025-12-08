@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -28,6 +29,13 @@ func (m *mockDiscovery) RegisterWithProtocol(ctx context.Context, serviceName, a
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	args := m.Called(ctx, serviceName, address, protocol)
+	return args.String(0), args.Error(1)
+}
+
+func (m *mockDiscovery) RegisterWithHealthEndpoint(ctx context.Context, serviceName, address, protocol string, healthEndpoint *transport.HealthEndpoint) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	args := m.Called(ctx, serviceName, address, protocol, healthEndpoint)
 	return args.String(0), args.Error(1)
 }
 

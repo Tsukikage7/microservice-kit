@@ -55,8 +55,13 @@ func TestNew(t *testing.T) {
 		if srv.Addr() != ":8080" {
 			t.Errorf("expected addr ':8080', got '%s'", srv.Addr())
 		}
-		if srv.Handler() != mux {
-			t.Error("handler mismatch")
+		// Handler() 返回包装后的 handler（包含健康检查中间件）
+		if srv.Handler() == nil {
+			t.Error("handler should not be nil")
+		}
+		// 验证健康检查管理器已创建
+		if srv.Health() == nil {
+			t.Error("health manager should not be nil")
 		}
 	})
 

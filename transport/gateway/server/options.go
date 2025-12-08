@@ -1,9 +1,10 @@
-package gateway
+package server
 
 import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -37,6 +38,10 @@ type options struct {
 	serveMuxOpts   []runtime.ServeMuxOption
 	marshalOptions protojson.MarshalOptions
 
+	// Health (内置)
+	healthTimeout time.Duration
+	healthOptions []health.Option
+
 	logger logger.Logger
 }
 
@@ -52,6 +57,7 @@ func defaultOptions() *options {
 		httpReadTimeout:  30 * time.Second,
 		httpWriteTimeout: 30 * time.Second,
 		httpIdleTimeout:  120 * time.Second,
+		healthTimeout:    5 * time.Second,
 	}
 }
 
@@ -135,4 +141,36 @@ func WithServeMuxOptions(opts ...runtime.ServeMuxOption) Option {
 // WithMarshalOptions 设置 JSON 序列化选项.
 func WithMarshalOptions(opts protojson.MarshalOptions) Option {
 	return func(o *options) { o.marshalOptions = opts }
+}
+
+// WithHealthTimeout 设置健康检查超时时间.
+func WithHealthTimeout(d time.Duration) Option {
+	return func(o *options) { o.healthTimeout = d }
+}
+
+// WithHealthOptions 添加健康检查选项.
+//
+// 例如添加就绪检查器:
+//
+//	WithHealthOptions(
+//	    health.WithReadinessChecker(health.NewDBChecker("db", db)),
+//	)
+func WithHealthOptions(opts ...health.Option) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, opts...)
+	}
+}
+
+// WithReadinessChecker 添加就绪检查器（便捷方法）.
+func WithReadinessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithReadinessChecker(checkers...))
+	}
+}
+
+// WithLivenessChecker 添加存活检查器（便捷方法）.
+func WithLivenessChecker(checkers ...health.Checker) Option {
+	return func(o *options) {
+		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
+	}
 }

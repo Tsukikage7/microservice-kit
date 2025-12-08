@@ -1,11 +1,13 @@
-// Package gateway 提供 gRPC + HTTP (gRPC-Gateway) 双协议服务器.
-package gateway
+// Package server 提供 gRPC + HTTP (gRPC-Gateway) 双协议服务器.
+package server
 
 import (
 	"context"
 	"net"
 	"net/http"
 
+	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -29,9 +31,14 @@ type Server struct {
 	grpcServer   *grpc.Server
 	grpcListener net.Listener
 
-	httpServer *http.Server
-	mux        *runtime.ServeMux
-	conn       *grpc.ClientConn
+	httpServer  *http.Server
+	httpHandler http.Handler
+	mux         *runtime.ServeMux
+	conn        *grpc.ClientConn
+
+	// 内置健康检查
+	health       *health.Health
+	healthServer *health.GRPCServer
 }
 
 // New 创建 Gateway 服务器.
@@ -53,9 +60,15 @@ func New(opts ...Option) *Server {
 	}
 	muxOpts = append(muxOpts, o.serveMuxOpts...)
 
+	// 创建内置健康检查管理器
+	healthOpts := []health.Option{health.WithTimeout(o.healthTimeout)}
+	healthOpts = append(healthOpts, o.healthOptions...)
+	h := health.New(healthOpts...)
+
 	return &Server{
-		opts: o,
-		mux:  runtime.NewServeMux(muxOpts...),
+		opts:   o,
+		mux:    runtime.NewServeMux(muxOpts...),
+		health: h,
 	}
 }
 
@@ -120,6 +133,11 @@ func (s *Server) Addr() string {
 	return s.opts.grpcAddr
 }
 
+// HTTPAddr 返回 HTTP 地址.
+func (s *Server) HTTPAddr() string {
+	return s.opts.httpAddr
+}
+
 // GRPCServer 返回底层 gRPC Server.
 func (s *Server) GRPCServer() *grpc.Server {
 	return s.grpcServer
@@ -128,6 +146,27 @@ func (s *Server) GRPCServer() *grpc.Server {
 // Mux 返回底层 ServeMux.
 func (s *Server) Mux() *runtime.ServeMux {
 	return s.mux
+}
+
+// Health 返回健康检查管理器.
+func (s *Server) Health() *health.Health {
+	return s.health
+}
+
+// HealthEndpoint 返回健康检查端点信息.
+//
+// Gateway 使用 HTTP 健康检查（通过 HTTP 端口）.
+func (s *Server) HealthEndpoint() *transport.HealthEndpoint {
+	return &transport.HealthEndpoint{
+		Type: transport.HealthCheckTypeHTTP,
+		Addr: s.opts.httpAddr,
+		Path: health.DefaultLivenessPath,
+	}
+}
+
+// HealthServer 返回 gRPC 健康检查服务器.
+func (s *Server) HealthServer() *health.GRPCServer {
+	return s.healthServer
 }
 
 func (s *Server) startGRPC() error {
@@ -157,9 +196,14 @@ func (s *Server) startGRPC() error {
 
 	s.grpcServer = grpc.NewServer(serverOpts...)
 
+	// 注册业务服务
 	for _, svc := range s.opts.services {
 		svc.RegisterGRPC(s.grpcServer)
 	}
+
+	// 注册 gRPC 健康检查服务
+	s.healthServer = health.NewGRPCServer(s.health)
+	s.healthServer.Register(s.grpcServer)
 
 	if s.opts.enableReflection {
 		reflection.Register(s.grpcServer)
@@ -191,9 +235,13 @@ func (s *Server) connectGateway() error {
 }
 
 func (s *Server) startHTTP(ctx context.Context) error {
+	// 使用健康检查中间件包装 mux
+	handler := health.Middleware(s.health)(s.mux)
+	s.httpHandler = handler
+
 	s.httpServer = &http.Server{
 		Addr:         s.opts.httpAddr,
-		Handler:      s.mux,
+		Handler:      handler,
 		ReadTimeout:  s.opts.httpReadTimeout,
 		WriteTimeout: s.opts.httpWriteTimeout,
 		IdleTimeout:  s.opts.httpIdleTimeout,
@@ -216,3 +264,6 @@ func (s *Server) startHTTP(ctx context.Context) error {
 	}
 	return nil
 }
+
+// 确保 Server 实现了 transport.HealthCheckable 接口.
+var _ transport.HealthCheckable = (*Server)(nil)

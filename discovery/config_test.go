@@ -59,11 +59,6 @@ func TestConfig_SetDefaults(t *testing.T) {
 
 	config.SetDefaults()
 
-	// 健康检查默认值
-	assert.Equal(t, DefaultHealthCheckInterval, config.HealthCheck.Interval)
-	assert.Equal(t, DefaultHealthCheckTimeout, config.HealthCheck.Timeout)
-	assert.Equal(t, DefaultHealthCheckDeregisterAfter, config.HealthCheck.DeregisterAfter)
-
 	// HTTP 服务默认配置
 	assert.Equal(t, DefaultVersion, config.Services.HTTP.Version)
 	assert.Equal(t, ProtocolHTTP, config.Services.HTTP.Protocol)
@@ -78,10 +73,6 @@ func TestConfig_SetDefaults(t *testing.T) {
 func TestConfig_SetDefaults_PreserveExisting(t *testing.T) {
 	config := &Config{
 		Type: TypeConsul,
-		HealthCheck: HealthCheckConfig{
-			Interval: "5s",
-			Timeout:  "2s",
-		},
 		Services: ServiceConfig{
 			HTTP: ServiceMetaConfig{
 				Version:  "2.0.0",
@@ -92,12 +83,6 @@ func TestConfig_SetDefaults_PreserveExisting(t *testing.T) {
 	}
 
 	config.SetDefaults()
-
-	// 已设置的值应该保留
-	assert.Equal(t, "5s", config.HealthCheck.Interval)
-	assert.Equal(t, "2s", config.HealthCheck.Timeout)
-	// 未设置的值应该使用默认值
-	assert.Equal(t, DefaultHealthCheckDeregisterAfter, config.HealthCheck.DeregisterAfter)
 
 	// HTTP 自定义配置应该保留
 	assert.Equal(t, "2.0.0", config.Services.HTTP.Version)
@@ -176,22 +161,7 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, "grpc", ProtocolGRPC)
 
 	// 测试默认值常量
-	assert.Equal(t, "10s", DefaultHealthCheckInterval)
-	assert.Equal(t, "3s", DefaultHealthCheckTimeout)
-	assert.Equal(t, "30s", DefaultHealthCheckDeregisterAfter)
 	assert.Equal(t, "1.0.0", DefaultVersion)
-}
-
-func TestHealthCheckConfig(t *testing.T) {
-	hc := HealthCheckConfig{
-		Interval:        "15s",
-		Timeout:         "5s",
-		DeregisterAfter: "60s",
-	}
-
-	require.Equal(t, "15s", hc.Interval)
-	require.Equal(t, "5s", hc.Timeout)
-	require.Equal(t, "60s", hc.DeregisterAfter)
 }
 
 func TestServiceMetaConfig(t *testing.T) {
