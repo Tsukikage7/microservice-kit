@@ -9,35 +9,66 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// buildEncoderConfig 构建 zap 编码器配置.
-func buildEncoderConfig(config *Config) zapcore.EncoderConfig {
-	encoderConfig := zap.NewProductionEncoderConfig()
-
-	encoderConfig.TimeKey = config.TimeKey
-	encoderConfig.LevelKey = config.LevelKey
-	encoderConfig.MessageKey = config.MessageKey
-	encoderConfig.CallerKey = config.CallerKey
-
-	encoderConfig.EncodeTime = getTimeEncoder(config.TimeFormat)
-	encoderConfig.EncodeLevel = getLevelEncoder(config.EncodeLevel)
-	encoderConfig.EncodeCaller = getCallerEncoder(config.EncodeCaller)
-
-	return encoderConfig
+// Encoder 编码器接口.
+type Encoder interface {
+	zapcore.Encoder
 }
 
-// buildEncoder 构建编码器.
-func buildEncoder(config *Config) zapcore.Encoder {
-	encoderConfig := buildEncoderConfig(config)
+// EncoderBuilder 编码器构建器.
+type EncoderBuilder struct {
+	config *Config
+}
 
-	if strings.ToLower(config.Format) == FormatJSON {
-		return zapcore.NewJSONEncoder(encoderConfig)
+// NewEncoderBuilder 创建编码器构建器.
+func NewEncoderBuilder(config *Config) *EncoderBuilder {
+	return &EncoderBuilder{config: config}
+}
+
+// Build 构建编码器.
+func (b *EncoderBuilder) Build() zapcore.Encoder {
+	if b.isJSON() {
+		return b.buildJSONEncoder()
 	}
-	return zapcore.NewConsoleEncoder(encoderConfig)
+	return b.buildConsoleEncoder()
+}
+
+// isJSON 判断是否为 JSON 格式.
+func (b *EncoderBuilder) isJSON() bool {
+	return strings.EqualFold(b.config.Format, FormatJSON)
+}
+
+// buildJSONEncoder 构建 JSON 编码器.
+func (b *EncoderBuilder) buildJSONEncoder() zapcore.Encoder {
+	return zapcore.NewJSONEncoder(b.buildConfig())
+}
+
+// buildConsoleEncoder 构建 Console 编码器.
+func (b *EncoderBuilder) buildConsoleEncoder() zapcore.Encoder {
+	cfg := b.buildConfig()
+	cfg.ConsoleSeparator = "\t"
+	cfg.EncodeDuration = zapcore.StringDurationEncoder
+	return newConsoleEncoder(cfg)
+}
+
+// buildConfig 构建编码器配置.
+func (b *EncoderBuilder) buildConfig() zapcore.EncoderConfig {
+	cfg := zap.NewProductionEncoderConfig()
+
+	cfg.TimeKey = b.config.TimeKey
+	cfg.LevelKey = b.config.LevelKey
+	cfg.MessageKey = b.config.MessageKey
+	cfg.CallerKey = b.config.CallerKey
+
+	cfg.EncodeTime = b.getTimeEncoder()
+	cfg.EncodeLevel = b.getLevelEncoder()
+	cfg.EncodeCaller = b.getCallerEncoder()
+
+	return cfg
 }
 
 // getTimeEncoder 获取时间编码器.
-func getTimeEncoder(format string) zapcore.TimeEncoder {
-	switch strings.ToLower(format) {
+func (b *EncoderBuilder) getTimeEncoder() zapcore.TimeEncoder {
+	switch strings.ToLower(b.config.TimeFormat) {
 	case TimeFormatISO8601:
 		return zapcore.ISO8601TimeEncoder
 	case TimeFormatRFC3339:
@@ -53,18 +84,13 @@ func getTimeEncoder(format string) zapcore.TimeEncoder {
 	case TimeFormatDateTime:
 		return datetimeEncoder
 	default:
-		return zapcore.TimeEncoderOfLayout(format)
+		return zapcore.TimeEncoderOfLayout(b.config.TimeFormat)
 	}
 }
 
-// datetimeEncoder 自定义日期时间编码器.
-func datetimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(t.Format("2006-01-02 15:04:05"))
-}
-
 // getLevelEncoder 获取级别编码器.
-func getLevelEncoder(encode string) zapcore.LevelEncoder {
-	switch strings.ToLower(encode) {
+func (b *EncoderBuilder) getLevelEncoder() zapcore.LevelEncoder {
+	switch strings.ToLower(b.config.EncodeLevel) {
 	case EncodeLevelCapital:
 		return zapcore.CapitalLevelEncoder
 	case EncodeLevelCapitalColor:
@@ -79,8 +105,8 @@ func getLevelEncoder(encode string) zapcore.LevelEncoder {
 }
 
 // getCallerEncoder 获取调用者编码器.
-func getCallerEncoder(encode string) zapcore.CallerEncoder {
-	switch strings.ToLower(encode) {
+func (b *EncoderBuilder) getCallerEncoder() zapcore.CallerEncoder {
+	switch strings.ToLower(b.config.EncodeCaller) {
 	case EncodeCallerShort:
 		return zapcore.ShortCallerEncoder
 	case EncodeCallerFull:
@@ -88,6 +114,11 @@ func getCallerEncoder(encode string) zapcore.CallerEncoder {
 	default:
 		return zapcore.ShortCallerEncoder
 	}
+}
+
+// datetimeEncoder 自定义日期时间编码器.
+func datetimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(t.Format("2006-01-02 15:04:05"))
 }
 
 // parseLevel 解析日志级别.
@@ -108,4 +139,9 @@ func parseLevel(level string) zapcore.Level {
 	default:
 		return zapcore.InfoLevel
 	}
+}
+
+// buildEncoder 构建编码器（兼容旧接口）.
+func buildEncoder(config *Config) zapcore.Encoder {
+	return NewEncoderBuilder(config).Build()
 }

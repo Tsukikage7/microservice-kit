@@ -36,6 +36,8 @@ var (
 	ErrUnsupportedDriver = errors.New("database: 不支持的驱动类型")
 	// ErrUnsupportedType 不支持的 ORM 类型.
 	ErrUnsupportedType = errors.New("database: 不支持的 ORM 类型")
+	// ErrRegisterTracingPlugin 注册追踪插件失败.
+	ErrRegisterTracingPlugin = errors.New("database: 注册追踪插件失败")
 )
 
 // Config 数据库配置.
@@ -60,6 +62,9 @@ type Config struct {
 
 	// LogLevel 日志级别: silent, error, warn, info
 	LogLevel string `json:"log_level" toml:"log_level" yaml:"log_level" mapstructure:"log_level"`
+
+	// EnableTracing 启用链路追踪
+	EnableTracing bool `json:"enable_tracing" toml:"enable_tracing" yaml:"enable_tracing" mapstructure:"enable_tracing"`
 }
 
 // PoolConfig 连接池配置.

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ func (s *DatabaseTestSuite) TestErrors() {
 	s.Equal("database: 连接字符串为空", ErrEmptyDSN.Error())
 	s.Equal("database: 不支持的驱动类型", ErrUnsupportedDriver.Error())
 	s.Equal("database: 不支持的 ORM 类型", ErrUnsupportedType.Error())
+	s.Equal("database: 注册追踪插件失败", ErrRegisterTracingPlugin.Error())
 }
 
 func (s *DatabaseTestSuite) TestConstants() {
@@ -204,6 +206,34 @@ func (s *DatabaseTestSuite) TestAsGORM() {
 
 	gormDB := AsGORM(db)
 	s.NotNil(gormDB)
+}
+
+func (s *DatabaseTestSuite) TestDB() {
+	cfg := &Config{
+		Driver: DriverSQLite,
+		DSN:    ":memory:",
+	}
+
+	db, err := NewDatabase(cfg, s.logger)
+	s.NoError(err)
+	defer db.Close()
+
+	ctx := context.Background()
+	gormDB := DB(ctx, db)
+	s.NotNil(gormDB)
+}
+
+func (s *DatabaseTestSuite) TestNewDatabase_WithTracing() {
+	cfg := &Config{
+		Driver:        DriverSQLite,
+		DSN:           ":memory:",
+		EnableTracing: true,
+	}
+
+	db, err := NewDatabase(cfg, s.logger)
+	s.NoError(err)
+	s.NotNil(db)
+	defer db.Close()
 }
 
 // GORMTestSuite GORM 功能测试套件.

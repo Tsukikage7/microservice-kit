@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -11,6 +10,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+	"gorm.io/plugin/opentelemetry/tracing"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
@@ -44,6 +44,13 @@ func newGORMDatabase(config *Config, log logger.Logger) (Database, error) {
 	db, err := gorm.Open(dialector, gormConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	// 注册链路追踪插件
+	if config.EnableTracing {
+		if err = db.Use(tracing.NewPlugin()); err != nil {
+			return nil, errors.Join(ErrRegisterTracingPlugin, err)
+		}
 	}
 
 	// 配置连接池
@@ -115,17 +122,27 @@ func (g *gormDatabase) Close() error {
 
 // GORMDatabase GORM 数据库扩展接口.
 type GORMDatabase interface {
-	Database
 	GORM() *gorm.DB
 }
 
 
-// AsGORM 将 Database 转换为 GORMDatabase.
+// AsGORM 将 Database 转换为 *gorm.DB.
+//
+// 注意: 如果启用了链路追踪，请使用 DB(ctx) 方法以确保追踪生效.
 func AsGORM(db Database) *gorm.DB {
 	if gdb, ok := db.(*gormDatabase); ok {
 		return gdb.db
 	}
 	panic("database: 无法提取 *gorm.DB，请确保使用 GORM 类型的数据库")
+}
+
+// DB 获取带 context 的 *gorm.DB（推荐）.
+//
+// 使用此方法可确保链路追踪正常工作:
+//
+//	database.DB(ctx, db).Find(&users)
+func DB(ctx context.Context, db Database) *gorm.DB {
+	return AsGORM(db).WithContext(ctx)
 }
 
 // gormLoggerAdapter GORM 日志适配器.
@@ -164,28 +181,28 @@ func (l *gormLoggerAdapter) LogMode(level gormlogger.LogLevel) gormlogger.Interf
 }
 
 // Info 信息日志.
-func (l *gormLoggerAdapter) Info(_ context.Context, msg string, data ...interface{}) {
+func (l *gormLoggerAdapter) Info(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Info {
-		l.logger.Infof(msg, data...)
+		l.logger.WithContext(ctx).Infof(msg, data...)
 	}
 }
 
 // Warn 警告日志.
-func (l *gormLoggerAdapter) Warn(_ context.Context, msg string, data ...interface{}) {
+func (l *gormLoggerAdapter) Warn(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Warn {
-		l.logger.Warnf(msg, data...)
+		l.logger.WithContext(ctx).Warnf(msg, data...)
 	}
 }
 
 // Error 错误日志.
-func (l *gormLoggerAdapter) Error(_ context.Context, msg string, data ...interface{}) {
+func (l *gormLoggerAdapter) Error(ctx context.Context, msg string, data ...interface{}) {
 	if l.logLevel >= gormlogger.Error {
-		l.logger.Errorf(msg, data...)
+		l.logger.WithContext(ctx).Errorf(msg, data...)
 	}
 }
 
 // Trace SQL 跟踪日志.
-func (l *gormLoggerAdapter) Trace(_ context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
+func (l *gormLoggerAdapter) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
 	if l.logLevel <= gormlogger.Silent {
 		return
 	}
@@ -193,15 +210,19 @@ func (l *gormLoggerAdapter) Trace(_ context.Context, begin time.Time, fc func() 
 	elapsed := time.Since(begin)
 	sql, rows := fc()
 
+	// 使用结构化字段，让 logger 根据 Format 配置自动格式化
+	log := l.logger.WithContext(ctx).With(
+		logger.Duration("elapsed", elapsed),
+		logger.Int64("rows", rows),
+		logger.String("sql", sql),
+	)
+
 	switch {
 	case err != nil && !errors.Is(err, gorm.ErrRecordNotFound):
-		l.logger.Error(fmt.Sprintf("[Database] SQL 执行失败 | 错误=%v | 耗时=%v | 行数=%d | SQL=%s",
-			err, elapsed, rows, sql))
+		log.With(logger.Any("error", err)).Error("[Database] SQL执行失败")
 	case elapsed > l.slowThreshold && l.slowThreshold > 0:
-		l.logger.Warn(fmt.Sprintf("[Database] 慢查询 | 耗时=%v | 阈值=%v | 行数=%d | SQL=%s",
-			elapsed, l.slowThreshold, rows, sql))
+		log.With(logger.Duration("threshold", l.slowThreshold)).Warn("[Database] 慢查询")
 	default:
-		l.logger.Debug(fmt.Sprintf("[Database] SQL 执行成功 | 耗时=%v | 行数=%d | SQL=%s",
-			elapsed, rows, sql))
+		log.Debug("[Database] SQL执行成功")
 	}
 }
