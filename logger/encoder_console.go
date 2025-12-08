@@ -4,6 +4,7 @@ package logger
 import (
 	"math"
 	"strconv"
+	"sync"
 	"time"
 
 	"go.uber.org/zap/buffer"
@@ -15,60 +16,78 @@ var bufferPool = buffer.NewPool()
 // consoleEncoder 自定义 console 编码器.
 // 将额外字段以 key=value 格式输出，而非 JSON.
 type consoleEncoder struct {
-	zapcore.Encoder
-	config zapcore.EncoderConfig
+	config    zapcore.EncoderConfig
+	fields    *buffer.Buffer // 存储通过 With() 添加的字段
+	fieldsNum int            // 字段数量
+	pool      *sync.Pool
 }
 
 // newConsoleEncoder 创建自定义 console 编码器.
 func newConsoleEncoder(config zapcore.EncoderConfig) zapcore.Encoder {
 	return &consoleEncoder{
-		Encoder: zapcore.NewConsoleEncoder(config),
-		config:  config,
+		config:    config,
+		fields:    bufferPool.Get(),
+		fieldsNum: 0,
+		pool:      &sync.Pool{New: func() interface{} { return bufferPool.Get() }},
 	}
 }
 
 // Clone 克隆编码器.
 func (c *consoleEncoder) Clone() zapcore.Encoder {
-	return &consoleEncoder{
-		Encoder: c.Encoder.Clone(),
-		config:  c.config,
+	clone := &consoleEncoder{
+		config:    c.config,
+		fields:    bufferPool.Get(),
+		fieldsNum: c.fieldsNum,
+		pool:      c.pool,
 	}
+	// 复制已有字段
+	if c.fields.Len() > 0 {
+		clone.fields.AppendString(c.fields.String())
+	}
+	return clone
 }
 
 // EncodeEntry 编码日志条目.
 func (c *consoleEncoder) EncodeEntry(entry zapcore.Entry, fields []zapcore.Field) (*buffer.Buffer, error) {
 	buf := bufferPool.Get()
-	enc := &fieldEncoder{buf: buf}
 
 	// 编码时间
 	if c.config.TimeKey != "" && c.config.EncodeTime != nil {
-		c.config.EncodeTime(entry.Time, enc)
+		c.config.EncodeTime(entry.Time, &primitiveEncoder{buf: buf})
 		buf.AppendString(c.config.ConsoleSeparator)
 	}
 
 	// 编码级别
 	if c.config.LevelKey != "" && c.config.EncodeLevel != nil {
-		c.config.EncodeLevel(entry.Level, enc)
+		c.config.EncodeLevel(entry.Level, &primitiveEncoder{buf: buf})
 		buf.AppendString(c.config.ConsoleSeparator)
 	}
 
 	// 编码调用者
 	if entry.Caller.Defined && c.config.CallerKey != "" && c.config.EncodeCaller != nil {
-		c.config.EncodeCaller(entry.Caller, enc)
+		c.config.EncodeCaller(entry.Caller, &primitiveEncoder{buf: buf})
 		buf.AppendString(c.config.ConsoleSeparator)
 	}
 
 	// 编码消息
 	buf.AppendString(entry.Message)
 
-	// 编码额外字段为 key=value 格式
-	if len(fields) > 0 {
+	// 编码通过 With() 添加的字段
+	if c.fields.Len() > 0 {
 		buf.AppendString(c.config.ConsoleSeparator)
+		buf.AppendString(c.fields.String())
+	}
+
+	// 编码本次调用传入的字段
+	if len(fields) > 0 {
+		if c.fields.Len() == 0 {
+			buf.AppendString(c.config.ConsoleSeparator)
+		}
 		for i, field := range fields {
-			if i > 0 {
+			if i > 0 || c.fieldsNum > 0 {
 				buf.AppendByte(' ')
 			}
-			c.encodeField(buf, field)
+			c.encodeFieldTo(buf, field)
 		}
 	}
 
@@ -76,8 +95,204 @@ func (c *consoleEncoder) EncodeEntry(entry zapcore.Entry, fields []zapcore.Field
 	return buf, nil
 }
 
-// encodeField 将字段编码为 key=value 格式.
-func (c *consoleEncoder) encodeField(buf *buffer.Buffer, field zapcore.Field) {
+// 实现 zapcore.ObjectEncoder 接口，用于处理 With() 添加的字段
+
+// AddString 添加字符串字段.
+func (c *consoleEncoder) AddString(key, val string) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(val)
+}
+
+// AddInt64 添加 int64 字段.
+func (c *consoleEncoder) AddInt64(key string, val int64) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(strconv.FormatInt(val, 10))
+}
+
+// AddInt 添加 int 字段.
+func (c *consoleEncoder) AddInt(key string, val int) {
+	c.AddInt64(key, int64(val))
+}
+
+// AddInt32 添加 int32 字段.
+func (c *consoleEncoder) AddInt32(key string, val int32) {
+	c.AddInt64(key, int64(val))
+}
+
+// AddInt16 添加 int16 字段.
+func (c *consoleEncoder) AddInt16(key string, val int16) {
+	c.AddInt64(key, int64(val))
+}
+
+// AddInt8 添加 int8 字段.
+func (c *consoleEncoder) AddInt8(key string, val int8) {
+	c.AddInt64(key, int64(val))
+}
+
+// AddUint64 添加 uint64 字段.
+func (c *consoleEncoder) AddUint64(key string, val uint64) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(strconv.FormatUint(val, 10))
+}
+
+// AddUint 添加 uint 字段.
+func (c *consoleEncoder) AddUint(key string, val uint) {
+	c.AddUint64(key, uint64(val))
+}
+
+// AddUint32 添加 uint32 字段.
+func (c *consoleEncoder) AddUint32(key string, val uint32) {
+	c.AddUint64(key, uint64(val))
+}
+
+// AddUint16 添加 uint16 字段.
+func (c *consoleEncoder) AddUint16(key string, val uint16) {
+	c.AddUint64(key, uint64(val))
+}
+
+// AddUint8 添加 uint8 字段.
+func (c *consoleEncoder) AddUint8(key string, val uint8) {
+	c.AddUint64(key, uint64(val))
+}
+
+// AddUintptr 添加 uintptr 字段.
+func (c *consoleEncoder) AddUintptr(key string, val uintptr) {
+	c.AddUint64(key, uint64(val))
+}
+
+// AddFloat64 添加 float64 字段.
+func (c *consoleEncoder) AddFloat64(key string, val float64) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(strconv.FormatFloat(val, 'g', -1, 64))
+}
+
+// AddFloat32 添加 float32 字段.
+func (c *consoleEncoder) AddFloat32(key string, val float32) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(strconv.FormatFloat(float64(val), 'g', -1, 32))
+}
+
+// AddBool 添加 bool 字段.
+func (c *consoleEncoder) AddBool(key string, val bool) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(strconv.FormatBool(val))
+}
+
+// AddDuration 添加 Duration 字段.
+func (c *consoleEncoder) AddDuration(key string, val time.Duration) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(val.String())
+}
+
+// AddTime 添加 Time 字段.
+func (c *consoleEncoder) AddTime(key string, val time.Time) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString(val.Format("2006-01-02 15:04:05"))
+}
+
+// AddBinary 添加二进制字段.
+func (c *consoleEncoder) AddBinary(key string, val []byte) {
+	c.AddString(key, string(val))
+}
+
+// AddByteString 添加字节字符串字段.
+func (c *consoleEncoder) AddByteString(key string, val []byte) {
+	c.AddString(key, string(val))
+}
+
+// AddComplex128 添加 complex128 字段.
+func (c *consoleEncoder) AddComplex128(key string, val complex128) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString("<complex>")
+}
+
+// AddComplex64 添加 complex64 字段.
+func (c *consoleEncoder) AddComplex64(key string, val complex64) {
+	c.AddComplex128(key, complex128(val))
+}
+
+// AddReflected 添加反射类型字段.
+func (c *consoleEncoder) AddReflected(key string, val interface{}) error {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	switch v := val.(type) {
+	case string:
+		c.fields.AppendString(v)
+	case int:
+		c.fields.AppendString(strconv.Itoa(v))
+	case int64:
+		c.fields.AppendString(strconv.FormatInt(v, 10))
+	case float64:
+		c.fields.AppendString(strconv.FormatFloat(v, 'g', -1, 64))
+	case bool:
+		c.fields.AppendString(strconv.FormatBool(v))
+	case error:
+		c.fields.AppendString(v.Error())
+	default:
+		if s, ok := val.(interface{ String() string }); ok {
+			c.fields.AppendString(s.String())
+		} else {
+			c.fields.AppendString("<reflected>")
+		}
+	}
+	return nil
+}
+
+// OpenNamespace 打开命名空间.
+func (c *consoleEncoder) OpenNamespace(key string) {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('.')
+	c.fieldsNum++ // 保持分隔符逻辑
+}
+
+// AddArray 添加数组字段.
+func (c *consoleEncoder) AddArray(key string, arr zapcore.ArrayMarshaler) error {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString("<array>")
+	return nil
+}
+
+// AddObject 添加对象字段.
+func (c *consoleEncoder) AddObject(key string, obj zapcore.ObjectMarshaler) error {
+	c.addSeparator()
+	c.fields.AppendString(key)
+	c.fields.AppendByte('=')
+	c.fields.AppendString("<object>")
+	return nil
+}
+
+// addSeparator 添加字段分隔符.
+func (c *consoleEncoder) addSeparator() {
+	if c.fieldsNum > 0 {
+		c.fields.AppendByte(' ')
+	}
+	c.fieldsNum++
+}
+
+// encodeFieldTo 将字段编码到指定 buffer.
+func (c *consoleEncoder) encodeFieldTo(buf *buffer.Buffer, field zapcore.Field) {
 	buf.AppendString(field.Key)
 	buf.AppendByte('=')
 
@@ -123,7 +338,7 @@ func (c *consoleEncoder) encodeField(buf *buffer.Buffer, field zapcore.Field) {
 		}
 
 	default:
-		c.encodeReflected(buf, field)
+		c.encodeReflectedTo(buf, field)
 	}
 }
 
@@ -137,14 +352,9 @@ func (c *consoleEncoder) decodeTime(field zapcore.Field) time.Time {
 	return time.Unix(0, field.Integer)
 }
 
-// encodeReflected 编码反射类型.
-func (c *consoleEncoder) encodeReflected(buf *buffer.Buffer, field zapcore.Field) {
+// encodeReflectedTo 编码反射类型到指定 buffer.
+func (c *consoleEncoder) encodeReflectedTo(buf *buffer.Buffer, field zapcore.Field) {
 	if field.Interface != nil {
-		if s, ok := field.Interface.(interface{ String() string }); ok {
-			buf.AppendString(s.String())
-			return
-		}
-		// 使用简单的类型断言处理常见类型
 		switch v := field.Interface.(type) {
 		case string:
 			buf.AppendString(v)
@@ -156,131 +366,50 @@ func (c *consoleEncoder) encodeReflected(buf *buffer.Buffer, field zapcore.Field
 			buf.AppendString(strconv.FormatFloat(v, 'g', -1, 64))
 		case bool:
 			buf.AppendString(strconv.FormatBool(v))
+		case error:
+			buf.AppendString(v.Error())
 		default:
-			buf.AppendString("<complex>")
+			if s, ok := v.(interface{ String() string }); ok {
+				buf.AppendString(s.String())
+			} else {
+				buf.AppendString("<complex>")
+			}
 		}
 	} else if field.String != "" {
 		buf.AppendString(field.String)
 	}
 }
 
-// fieldEncoder 用于编码单个值到 buffer.
-type fieldEncoder struct {
+// primitiveEncoder 用于编码时间、级别、调用者等基本字段.
+type primitiveEncoder struct {
 	buf *buffer.Buffer
 }
 
-// AppendString 追加字符串.
-func (e *fieldEncoder) AppendString(v string) {
-	e.buf.AppendString(v)
-}
-
-// AppendBool 追加布尔值.
-func (e *fieldEncoder) AppendBool(v bool) {
-	e.buf.AppendString(strconv.FormatBool(v))
-}
-
-// AppendByteString 追加字节字符串.
-func (e *fieldEncoder) AppendByteString(v []byte) {
-	e.buf.AppendString(string(v))
-}
-
-// AppendInt 追加整数.
-func (e *fieldEncoder) AppendInt(v int) {
-	e.buf.AppendString(strconv.Itoa(v))
-}
-
-// AppendInt64 追加 int64.
-func (e *fieldEncoder) AppendInt64(v int64) {
-	e.buf.AppendString(strconv.FormatInt(v, 10))
-}
-
-// AppendInt32 追加 int32.
-func (e *fieldEncoder) AppendInt32(v int32) {
-	e.buf.AppendString(strconv.FormatInt(int64(v), 10))
-}
-
-// AppendInt16 追加 int16.
-func (e *fieldEncoder) AppendInt16(v int16) {
-	e.buf.AppendString(strconv.FormatInt(int64(v), 10))
-}
-
-// AppendInt8 追加 int8.
-func (e *fieldEncoder) AppendInt8(v int8) {
-	e.buf.AppendString(strconv.FormatInt(int64(v), 10))
-}
-
-// AppendUint 追加无符号整数.
-func (e *fieldEncoder) AppendUint(v uint) {
-	e.buf.AppendString(strconv.FormatUint(uint64(v), 10))
-}
-
-// AppendUint64 追加 uint64.
-func (e *fieldEncoder) AppendUint64(v uint64) {
-	e.buf.AppendString(strconv.FormatUint(v, 10))
-}
-
-// AppendUint32 追加 uint32.
-func (e *fieldEncoder) AppendUint32(v uint32) {
-	e.buf.AppendString(strconv.FormatUint(uint64(v), 10))
-}
-
-// AppendUint16 追加 uint16.
-func (e *fieldEncoder) AppendUint16(v uint16) {
-	e.buf.AppendString(strconv.FormatUint(uint64(v), 10))
-}
-
-// AppendUint8 追加 uint8.
-func (e *fieldEncoder) AppendUint8(v uint8) {
-	e.buf.AppendString(strconv.FormatUint(uint64(v), 10))
-}
-
-// AppendUintptr 追加 uintptr.
-func (e *fieldEncoder) AppendUintptr(v uintptr) {
-	e.buf.AppendString(strconv.FormatUint(uint64(v), 10))
-}
-
-// AppendFloat64 追加 float64.
-func (e *fieldEncoder) AppendFloat64(v float64) {
-	e.buf.AppendString(strconv.FormatFloat(v, 'g', -1, 64))
-}
-
-// AppendFloat32 追加 float32.
-func (e *fieldEncoder) AppendFloat32(v float32) {
-	e.buf.AppendString(strconv.FormatFloat(float64(v), 'g', -1, 32))
-}
-
-// AppendComplex128 追加 complex128（忽略）.
-func (e *fieldEncoder) AppendComplex128(_ complex128) {}
-
-// AppendComplex64 追加 complex64（忽略）.
-func (e *fieldEncoder) AppendComplex64(_ complex64) {}
-
-// AppendDuration 追加时间间隔.
-func (e *fieldEncoder) AppendDuration(v time.Duration) {
-	e.buf.AppendString(v.String())
-}
-
-// AppendTime 追加时间.
-func (e *fieldEncoder) AppendTime(v time.Time) {
-	e.buf.AppendString(v.Format("2006-01-02 15:04:05"))
-}
-
-// AppendArray 追加数组（忽略）.
-func (e *fieldEncoder) AppendArray(_ zapcore.ArrayMarshaler) error {
-	return nil
-}
-
-// AppendObject 追加对象（忽略）.
-func (e *fieldEncoder) AppendObject(_ zapcore.ObjectMarshaler) error {
-	return nil
-}
-
-// AppendReflected 追加反射值.
-func (e *fieldEncoder) AppendReflected(v interface{}) error {
+func (e *primitiveEncoder) AppendString(v string)                        { e.buf.AppendString(v) }
+func (e *primitiveEncoder) AppendBool(v bool)                            { e.buf.AppendString(strconv.FormatBool(v)) }
+func (e *primitiveEncoder) AppendByteString(v []byte)                    { e.buf.AppendString(string(v)) }
+func (e *primitiveEncoder) AppendInt(v int)                              { e.buf.AppendString(strconv.Itoa(v)) }
+func (e *primitiveEncoder) AppendInt64(v int64)                          { e.buf.AppendString(strconv.FormatInt(v, 10)) }
+func (e *primitiveEncoder) AppendInt32(v int32)                          { e.buf.AppendString(strconv.FormatInt(int64(v), 10)) }
+func (e *primitiveEncoder) AppendInt16(v int16)                          { e.buf.AppendString(strconv.FormatInt(int64(v), 10)) }
+func (e *primitiveEncoder) AppendInt8(v int8)                            { e.buf.AppendString(strconv.FormatInt(int64(v), 10)) }
+func (e *primitiveEncoder) AppendUint(v uint)                            { e.buf.AppendString(strconv.FormatUint(uint64(v), 10)) }
+func (e *primitiveEncoder) AppendUint64(v uint64)                        { e.buf.AppendString(strconv.FormatUint(v, 10)) }
+func (e *primitiveEncoder) AppendUint32(v uint32)                        { e.buf.AppendString(strconv.FormatUint(uint64(v), 10)) }
+func (e *primitiveEncoder) AppendUint16(v uint16)                        { e.buf.AppendString(strconv.FormatUint(uint64(v), 10)) }
+func (e *primitiveEncoder) AppendUint8(v uint8)                          { e.buf.AppendString(strconv.FormatUint(uint64(v), 10)) }
+func (e *primitiveEncoder) AppendUintptr(v uintptr)                      { e.buf.AppendString(strconv.FormatUint(uint64(v), 10)) }
+func (e *primitiveEncoder) AppendFloat64(v float64)                      { e.buf.AppendString(strconv.FormatFloat(v, 'g', -1, 64)) }
+func (e *primitiveEncoder) AppendFloat32(v float32)                      { e.buf.AppendString(strconv.FormatFloat(float64(v), 'g', -1, 32)) }
+func (e *primitiveEncoder) AppendComplex128(_ complex128)                {}
+func (e *primitiveEncoder) AppendComplex64(_ complex64)                  {}
+func (e *primitiveEncoder) AppendDuration(v time.Duration)               { e.buf.AppendString(v.String()) }
+func (e *primitiveEncoder) AppendTime(v time.Time)                       { e.buf.AppendString(v.Format("2006-01-02 15:04:05")) }
+func (e *primitiveEncoder) AppendArray(_ zapcore.ArrayMarshaler) error   { return nil }
+func (e *primitiveEncoder) AppendObject(_ zapcore.ObjectMarshaler) error { return nil }
+func (e *primitiveEncoder) AppendReflected(v interface{}) error {
 	if s, ok := v.(interface{ String() string }); ok {
 		e.buf.AppendString(s.String())
-	} else {
-		e.buf.AppendString("<reflected>")
 	}
 	return nil
 }

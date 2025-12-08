@@ -348,6 +348,50 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_UintTypes() {
 	s.Contains(output, "uint32=4294967295")
 }
 
+// TestConsoleEncoder_WithMethod 测试 With() 方法添加的字段.
+func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_WithMethod() {
+	buf := &bytes.Buffer{}
+
+	config := zapcore.EncoderConfig{
+		TimeKey:          "",
+		LevelKey:         "level",
+		MessageKey:       "msg",
+		EncodeLevel:      zapcore.CapitalLevelEncoder,
+		ConsoleSeparator: "\t",
+	}
+
+	encoder := newConsoleEncoder(config)
+	core := zapcore.NewCore(encoder, zapcore.AddSync(buf), zapcore.DebugLevel)
+	baseLogger := zap.New(core)
+
+	// 使用 With() 添加字段
+	logger := baseLogger.With(
+		zap.String("traceId", "abc123"),
+		zap.String("spanId", "def456"),
+	)
+
+	// 记录日志，同时传入额外字段
+	logger.Info("test message",
+		zap.Duration("elapsed", 100*time.Millisecond),
+		zap.Int64("rows", 10),
+	)
+
+	output := buf.String()
+
+	// 验证输出不包含 JSON 花括号
+	s.NotContains(output, "{")
+	s.NotContains(output, "}")
+
+	// 验证 With() 添加的字段
+	s.Contains(output, "traceId=abc123")
+	s.Contains(output, "spanId=def456")
+
+	// 验证本次调用传入的字段
+	s.Contains(output, "elapsed=100ms")
+	s.Contains(output, "rows=10")
+	s.Contains(output, "test message")
+}
+
 // mockArrayEncoder 用于测试的 mock encoder.
 type mockArrayEncoder struct {
 	value string

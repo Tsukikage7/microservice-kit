@@ -211,11 +211,12 @@ func (l *gormLoggerAdapter) Trace(ctx context.Context, begin time.Time, fc func(
 	sql, rows := fc()
 
 	// 使用结构化字段，让 logger 根据 Format 配置自动格式化
-	log := l.logger.WithContext(ctx).With(
+	// 先添加业务字段，再添加 trace 信息，保持 traceId/spanId 在最后
+	log := l.logger.With(
 		logger.Duration("elapsed", elapsed),
 		logger.Int64("rows", rows),
 		logger.String("sql", sql),
-	)
+	).WithContext(ctx)
 
 	switch {
 	case err != nil && !errors.Is(err, gorm.ErrRecordNotFound):
@@ -223,6 +224,9 @@ func (l *gormLoggerAdapter) Trace(ctx context.Context, begin time.Time, fc func(
 	case elapsed > l.slowThreshold && l.slowThreshold > 0:
 		log.With(logger.Duration("threshold", l.slowThreshold)).Warn("[Database] 慢查询")
 	default:
-		log.Debug("[Database] SQL执行成功")
+		// 根据配置级别输出：info 级别显示 SQL，低于 info 则不显示
+		if l.logLevel >= gormlogger.Info {
+			log.Info("[Database] SQL执行成功")
+		}
 	}
 }
