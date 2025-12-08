@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -216,15 +217,13 @@ func (c *PrometheusCollector) Counter(name string, labels map[string]string) {
 	counter, exists := c.counters[name]
 	c.mu.RUnlock()
 
+	// 提取 label 名称和值（保持顺序一致）
+	labelNames, labelValues := extractLabels(labels)
+
 	if !exists {
 		c.mu.Lock()
 		// 双重检查
 		if counter, exists = c.counters[name]; !exists {
-			labelNames := make([]string, 0, len(labels))
-			for k := range labels {
-				labelNames = append(labelNames, k)
-			}
-
 			counter = prometheus.NewCounterVec(
 				prometheus.CounterOpts{
 					Namespace: c.config.Namespace,
@@ -242,10 +241,6 @@ func (c *PrometheusCollector) Counter(name string, labels map[string]string) {
 	}
 
 	if counter != nil {
-		labelValues := make([]string, 0, len(labels))
-		for _, v := range labels {
-			labelValues = append(labelValues, v)
-		}
 		counter.WithLabelValues(labelValues...).Inc()
 	}
 }
@@ -260,15 +255,13 @@ func (c *PrometheusCollector) Histogram(name string, value float64, labels map[s
 	histogram, exists := c.histograms[name]
 	c.mu.RUnlock()
 
+	// 提取 label 名称和值（保持顺序一致）
+	labelNames, labelValues := extractLabels(labels)
+
 	if !exists {
 		c.mu.Lock()
 		// 双重检查
 		if histogram, exists = c.histograms[name]; !exists {
-			labelNames := make([]string, 0, len(labels))
-			for k := range labels {
-				labelNames = append(labelNames, k)
-			}
-
 			histogram = prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
 					Namespace: c.config.Namespace,
@@ -287,10 +280,6 @@ func (c *PrometheusCollector) Histogram(name string, value float64, labels map[s
 	}
 
 	if histogram != nil {
-		labelValues := make([]string, 0, len(labels))
-		for _, v := range labels {
-			labelValues = append(labelValues, v)
-		}
 		histogram.WithLabelValues(labelValues...).Observe(value)
 	}
 }
@@ -305,15 +294,13 @@ func (c *PrometheusCollector) Gauge(name string, value float64, labels map[strin
 	gauge, exists := c.gauges[name]
 	c.mu.RUnlock()
 
+	// 提取 label 名称和值（保持顺序一致）
+	labelNames, labelValues := extractLabels(labels)
+
 	if !exists {
 		c.mu.Lock()
 		// 双重检查
 		if gauge, exists = c.gauges[name]; !exists {
-			labelNames := make([]string, 0, len(labels))
-			for k := range labels {
-				labelNames = append(labelNames, k)
-			}
-
 			gauge = prometheus.NewGaugeVec(
 				prometheus.GaugeOpts{
 					Namespace: c.config.Namespace,
@@ -331,12 +318,25 @@ func (c *PrometheusCollector) Gauge(name string, value float64, labels map[strin
 	}
 
 	if gauge != nil {
-		labelValues := make([]string, 0, len(labels))
-		for _, v := range labels {
-			labelValues = append(labelValues, v)
-		}
 		gauge.WithLabelValues(labelValues...).Set(value)
 	}
+}
+
+// extractLabels 从 map 中提取 label 名称和值，确保顺序一致.
+// 通过排序 key 来保证每次调用的顺序稳定.
+func extractLabels(labels map[string]string) ([]string, []string) {
+	labelNames := make([]string, 0, len(labels))
+	for k := range labels {
+		labelNames = append(labelNames, k)
+	}
+	sort.Strings(labelNames)
+
+	labelValues := make([]string, 0, len(labels))
+	for _, k := range labelNames {
+		labelValues = append(labelValues, labels[k])
+	}
+
+	return labelNames, labelValues
 }
 
 // GetHandler 返回 metrics 的 HTTP 处理器.

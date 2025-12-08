@@ -212,11 +212,11 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_WithFields() {
 	s.NotContains(output, "{")
 	s.NotContains(output, "}")
 
-	// 验证包含 key=value 格式的字段
-	s.Contains(output, "traceId=abc123")
-	s.Contains(output, "spanId=def456")
-	s.Contains(output, "elapsed=100ms")
-	s.Contains(output, "rows=10")
+	// 验证包含 [key:value] 格式的字段
+	s.Contains(output, "[traceId:abc123]")
+	s.Contains(output, "[spanId:def456]")
+	s.Contains(output, "[elapsed:100ms]")
+	s.Contains(output, "[rows:10]")
 	s.Contains(output, "test message")
 }
 
@@ -290,13 +290,13 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_FieldTypes() {
 
 	output := buf.String()
 
-	s.Contains(output, "str=hello")
-	s.Contains(output, "int=42")
-	s.Contains(output, "int64=9999999999")
-	s.Contains(output, "bool_true=true")
-	s.Contains(output, "bool_false=false")
-	s.Contains(output, "duration=5s")
-	s.Contains(output, "float=3.14")
+	s.Contains(output, "[str:hello]")
+	s.Contains(output, "[int:42]")
+	s.Contains(output, "[int64:9999999999]")
+	s.Contains(output, "[bool_true:true]")
+	s.Contains(output, "[bool_false:false]")
+	s.Contains(output, "[duration:5s]")
+	s.Contains(output, "[float:3.14]")
 }
 
 // TestConsoleEncoder_WithError 测试错误字段.
@@ -318,7 +318,7 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_WithError() {
 	logger.Error("error occurred", zap.Error(testErr))
 
 	output := buf.String()
-	s.Contains(output, "error=test error message")
+	s.Contains(output, "[error:test error message]")
 }
 
 // TestConsoleEncoder_UintTypes 测试无符号整数类型.
@@ -343,9 +343,9 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_UintTypes() {
 	)
 
 	output := buf.String()
-	s.Contains(output, "uint=100")
-	s.Contains(output, "uint64=18446744073709551615")
-	s.Contains(output, "uint32=4294967295")
+	s.Contains(output, "[uint:100]")
+	s.Contains(output, "[uint64:18446744073709551615]")
+	s.Contains(output, "[uint32:4294967295]")
 }
 
 // TestConsoleEncoder_WithMethod 测试 With() 方法添加的字段.
@@ -383,12 +383,12 @@ func (s *ConsoleEncoderTestSuite) TestConsoleEncoder_WithMethod() {
 	s.NotContains(output, "}")
 
 	// 验证 With() 添加的字段
-	s.Contains(output, "traceId=abc123")
-	s.Contains(output, "spanId=def456")
+	s.Contains(output, "[traceId:abc123]")
+	s.Contains(output, "[spanId:def456]")
 
 	// 验证本次调用传入的字段
-	s.Contains(output, "elapsed=100ms")
-	s.Contains(output, "rows=10")
+	s.Contains(output, "[elapsed:100ms]")
+	s.Contains(output, "[rows:10]")
 	s.Contains(output, "test message")
 }
 

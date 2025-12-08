@@ -335,8 +335,53 @@ func Int64(key string, value int64) Field {
 	return Field{Key: key, Value: value}
 }
 
+// Int32 创建 int32 字段.
+func Int32(key string, value int32) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int16 创建 int16 字段.
+func Int16(key string, value int16) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int8 创建 int8 字段.
+func Int8(key string, value int8) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Uint 创建 uint 字段.
+func Uint(key string, value uint) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Uint64 创建 uint64 字段.
+func Uint64(key string, value uint64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Uint32 创建 uint32 字段.
+func Uint32(key string, value uint32) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Uint16 创建 uint16 字段.
+func Uint16(key string, value uint16) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Uint8 创建 uint8 字段.
+func Uint8(key string, value uint8) Field {
+	return Field{Key: key, Value: value}
+}
+
 // Float64 创建 float64 字段.
 func Float64(key string, value float64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Float32 创建 float32 字段.
+func Float32(key string, value float32) Field {
 	return Field{Key: key, Value: value}
 }
 
