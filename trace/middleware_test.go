@@ -84,6 +84,36 @@ func TestHTTPMiddleware_ContextPropagation(t *testing.T) {
 	assert.NotNil(t, span)
 }
 
+func TestHTTPMiddleware_TraceIDHeader(t *testing.T) {
+	tp := setupTestTracer(t)
+	defer tp.Shutdown(context.Background())
+
+	var capturedTraceID string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTraceID = TraceID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	middleware := HTTPMiddleware("test-service")
+	wrappedHandler := middleware(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	rec := httptest.NewRecorder()
+
+	wrappedHandler.ServeHTTP(rec, req)
+
+	// 验证响应头包含 X-Trace-Id
+	headerTraceID := rec.Header().Get(TraceIDHeader)
+
+	// 如果 traceId 有效，响应头应包含相同值
+	if capturedTraceID != "" {
+		assert.Equal(t, capturedTraceID, headerTraceID)
+	}
+
+	// 验证响应状态码
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestResponseWriter(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rw := &responseWriter{ResponseWriter: rec, statusCode: http.StatusOK}

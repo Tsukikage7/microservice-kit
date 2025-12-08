@@ -3,6 +3,7 @@ package trace
 import (
 	"context"
 
+	"github.com/Tsukikage7/microservice-kit/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -36,13 +37,25 @@ func (mc metadataCarrier) Keys() []string {
 	return keys
 }
 
+// TraceIDMetadataKey gRPC metadata 中 traceId 的键名.
+const TraceIDMetadataKey = "x-trace-id"
+
 // UnaryServerInterceptor 返回 gRPC 一元服务端拦截器.
+//
+// 拦截器会自动从请求 metadata 提取或生成 traceId，并通过响应 header 返回.
+// traceId 同时作为请求的唯一标识（requestId），可通过 TraceID(ctx) 获取.
 //
 // 使用示例:
 //
 //	server := grpc.NewServer(
-//	    grpc.UnaryInterceptor(tracing.UnaryServerInterceptor("my-service")),
+//	    grpc.UnaryInterceptor(trace.UnaryServerInterceptor("my-service")),
 //	)
+//
+//	// 在服务实现中获取 traceId
+//	func (s *Server) GetUser(ctx context.Context, req *pb.Request) (*pb.Response, error) {
+//	    traceId := trace.TraceID(ctx)
+//	    // ...
+//	}
 func UnaryServerInterceptor(serviceName string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -68,6 +81,21 @@ func UnaryServerInterceptor(serviceName string) grpc.UnaryServerInterceptor {
 		)
 		defer span.End()
 
+		// 注入 trace 信息到 context，供 logger.WithContext 使用
+		spanCtx := span.SpanContext()
+		if spanCtx.HasTraceID() {
+			ctx = logger.ContextWithTraceID(ctx, spanCtx.TraceID().String())
+		}
+		if spanCtx.HasSpanID() {
+			ctx = logger.ContextWithSpanID(ctx, spanCtx.SpanID().String())
+		}
+
+		// 在响应 header 中返回 traceId，便于客户端关联请求
+		if spanCtx.TraceID().IsValid() {
+			header := metadata.Pairs(TraceIDMetadataKey, spanCtx.TraceID().String())
+			_ = grpc.SetHeader(ctx, header)
+		}
+
 		// 执行处理器
 		resp, err := handler(ctx, req)
 
@@ -87,10 +115,13 @@ func UnaryServerInterceptor(serviceName string) grpc.UnaryServerInterceptor {
 
 // StreamServerInterceptor 返回 gRPC 流式服务端拦截器.
 //
+// 拦截器会自动从请求 metadata 提取或生成 traceId，并通过响应 header 返回.
+// traceId 同时作为请求的唯一标识（requestId），可通过 TraceID(ctx) 获取.
+//
 // 使用示例:
 //
 //	server := grpc.NewServer(
-//	    grpc.StreamInterceptor(tracing.StreamServerInterceptor("my-service")),
+//	    grpc.StreamInterceptor(trace.StreamServerInterceptor("my-service")),
 //	)
 func StreamServerInterceptor(serviceName string) grpc.StreamServerInterceptor {
 	return func(
@@ -120,6 +151,21 @@ func StreamServerInterceptor(serviceName string) grpc.StreamServerInterceptor {
 			),
 		)
 		defer span.End()
+
+		// 注入 trace 信息到 context，供 logger.WithContext 使用
+		spanCtx := span.SpanContext()
+		if spanCtx.HasTraceID() {
+			ctx = logger.ContextWithTraceID(ctx, spanCtx.TraceID().String())
+		}
+		if spanCtx.HasSpanID() {
+			ctx = logger.ContextWithSpanID(ctx, spanCtx.SpanID().String())
+		}
+
+		// 在响应 header 中返回 traceId，便于客户端关联请求
+		if spanCtx.TraceID().IsValid() {
+			header := metadata.Pairs(TraceIDMetadataKey, spanCtx.TraceID().String())
+			_ = ss.SendHeader(header)
+		}
 
 		// 包装 ServerStream 以传递新的 context
 		wrappedStream := &serverStreamWrapper{

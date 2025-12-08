@@ -167,30 +167,6 @@ func (s *ZapLoggerTestSuite) TestWithMultipleFields() {
 	})
 }
 
-func (s *ZapLoggerTestSuite) TestWithContext() {
-	log, err := NewLogger(DefaultConfig())
-	s.Require().NoError(err)
-	defer log.Close()
-
-	// empty context
-	logEmpty := log.WithContext(context.TODO())
-	s.NotNil(logEmpty)
-
-	// background context
-	logBg := log.WithContext(context.Background())
-	s.NotNil(logBg)
-
-	// context with trace_id
-	ctx := context.WithValue(context.Background(), TraceIDKey, "abc123")
-	logWithTrace := log.WithContext(ctx)
-	logWithTrace.Info("with trace")
-
-	// context with request_id
-	ctx = context.WithValue(ctx, RequestIDKey, "req-456")
-	logWithBoth := log.WithContext(ctx)
-	logWithBoth.Info("with trace and request")
-}
-
 func (s *ZapLoggerTestSuite) TestSync() {
 	log, err := NewLogger(DefaultConfig())
 	s.Require().NoError(err)
@@ -702,31 +678,46 @@ func (s *WithContextTestSuite) TestWithContext_NilContext() {
 	defer log.Close()
 
 	// nil context 应该返回原 logger
-	logWithNil := log.WithContext(context.TODO())
-	s.NotNil(logWithNil)
-	s.Equal(log, logWithNil)
+	result := log.WithContext(nil)
+	s.Equal(log, result)
 }
 
-func (s *WithContextTestSuite) TestWithContext_OnlyTraceID() {
+func (s *WithContextTestSuite) TestWithContext_EmptyContext() {
 	log, err := NewLogger(DefaultConfig())
 	s.Require().NoError(err)
 	defer log.Close()
 
-	ctx := context.WithValue(context.Background(), TraceIDKey, "trace-only")
-	logWithTrace := log.WithContext(ctx)
-	s.NotNil(logWithTrace)
-	s.NotEqual(log, logWithTrace)
+	// 空 context（没有 trace 信息）应该返回原 logger
+	result := log.WithContext(context.Background())
+	s.Equal(log, result)
 }
 
-func (s *WithContextTestSuite) TestWithContext_OnlyRequestID() {
+func (s *WithContextTestSuite) TestWithContext_WithTraceID() {
 	log, err := NewLogger(DefaultConfig())
 	s.Require().NoError(err)
 	defer log.Close()
 
-	ctx := context.WithValue(context.Background(), RequestIDKey, "request-only")
-	logWithRequest := log.WithContext(ctx)
-	s.NotNil(logWithRequest)
-	s.NotEqual(log, logWithRequest)
+	// context 中有 traceId
+	ctx := ContextWithTraceID(context.Background(), "trace-abc123")
+	result := log.WithContext(ctx)
+
+	// 应该返回新的 logger（带 traceId 字段）
+	s.NotEqual(log, result)
+}
+
+func (s *WithContextTestSuite) TestWithContext_WithTraceIDAndSpanID() {
+	log, err := NewLogger(DefaultConfig())
+	s.Require().NoError(err)
+	defer log.Close()
+
+	// context 中有 traceId 和 spanId
+	ctx := context.Background()
+	ctx = ContextWithTraceID(ctx, "trace-abc123")
+	ctx = ContextWithSpanID(ctx, "span-def456")
+	result := log.WithContext(ctx)
+
+	// 应该返回新的 logger（带 traceId 和 spanId 字段）
+	s.NotEqual(log, result)
 }
 
 // CloseTestSuite Close 测试套件.

@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -154,12 +153,6 @@ func (s *LoggerTestSuite) TestLoggerInterface() {
 	s.NotNil(logWithFields)
 	logWithFields.Info("message with fields")
 
-	// 测试 WithContext
-	ctx := context.WithValue(context.Background(), TraceIDKey, "abc123")
-	logWithCtx := log.WithContext(ctx)
-	s.NotNil(logWithCtx)
-	logWithCtx.Info("message with context")
-
 	// 测试 Sync 不会 panic
 	s.NotPanics(func() {
 		_ = log.Sync()
@@ -178,29 +171,6 @@ func (s *LoggerTestSuite) TestLoggerWith() {
 			With(Bool("debug", true)).
 			Info("chained fields")
 	})
-}
-
-func (s *LoggerTestSuite) TestLoggerWithContext() {
-	log, err := NewLogger(DefaultConfig())
-	s.Require().NoError(err)
-	defer log.Close()
-
-	// empty context (使用 context.TODO() 代替 nil)
-	logEmpty := log.WithContext(context.TODO())
-	s.NotNil(logEmpty, "WithContext(context.TODO()) should return logger")
-
-	// background context
-	logBg := log.WithContext(context.Background())
-	s.NotNil(logBg)
-	logBg.Info("empty context")
-
-	// context with values
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, TraceIDKey, "trace-123")
-	ctx = context.WithValue(ctx, RequestIDKey, "req-456")
-	logCtx := log.WithContext(ctx)
-	s.NotNil(logCtx)
-	logCtx.Info("context with trace and request id")
 }
 
 // ConstantsTestSuite 常量测试套件.
@@ -236,7 +206,3 @@ func (s *ConstantsTestSuite) TestOutputConstants() {
 	s.Equal("both", OutputBoth)
 }
 
-func (s *ConstantsTestSuite) TestContextKeyConstants() {
-	s.Equal(ContextKey("trace_id"), TraceIDKey)
-	s.Equal(ContextKey("request_id"), RequestIDKey)
-}

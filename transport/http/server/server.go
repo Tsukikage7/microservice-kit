@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/trace"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
@@ -39,6 +40,11 @@ func New(handler http.Handler, opts ...Option) *Server {
 
 	// 使用健康检查中间件包装 handler
 	wrappedHandler := health.Middleware(h)(handler)
+
+	// 如果启用链路追踪，使用 trace 中间件包装（在最外层）
+	if o.tracerName != "" {
+		wrappedHandler = trace.HTTPMiddleware(o.tracerName)(wrappedHandler)
+	}
 
 	return &Server{
 		opts:    o,
@@ -128,6 +134,7 @@ type options struct {
 	logger        logger.Logger
 	healthTimeout time.Duration
 	healthOptions []health.Option
+	tracerName    string // 链路追踪服务名，为空则不启用
 }
 
 // defaultOptions 返回默认配置.
@@ -231,6 +238,36 @@ func WithReadinessChecker(checkers ...health.Checker) Option {
 func WithLivenessChecker(checkers ...health.Checker) Option {
 	return func(o *options) {
 		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
+	}
+}
+
+// WithTrace 启用链路追踪.
+//
+// 启用后，会自动添加 trace 中间件，从请求中提取或生成 traceId/spanId，
+// 并注入到 context 中，业务代码可通过 log.WithContext(ctx) 自动获取这些字段.
+//
+// 注意: 需要先调用 trace.NewTracer() 初始化全局 TracerProvider.
+//
+// 使用示例:
+//
+//	// 初始化 TracerProvider
+//	tp := trace.MustNewTracer(cfg, "my-service", "1.0.0")
+//	defer tp.Shutdown(context.Background())
+//
+//	// 创建 HTTP 服务器
+//	srv := server.New(handler,
+//	    server.WithLogger(log),
+//	    server.WithTrace("my-service"),
+//	)
+//
+//	// 业务代码中
+//	func handleRequest(w http.ResponseWriter, r *http.Request) {
+//	    log.WithContext(r.Context()).Info("处理请求")
+//	    // 输出: {"msg":"处理请求","traceId":"abc...","spanId":"def..."}
+//	}
+func WithTrace(serviceName string) Option {
+	return func(o *options) {
+		o.tracerName = serviceName
 	}
 }
 

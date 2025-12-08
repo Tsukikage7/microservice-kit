@@ -6,14 +6,15 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
-	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
 
 // Registrar 服务注册器接口.
@@ -209,7 +210,7 @@ func (s *Server) startGRPC() error {
 		reflection.Register(s.grpcServer)
 	}
 
-	s.opts.logger.Infof("[%s] gRPC server started [addr:%s]", s.opts.name, s.opts.grpcAddr)
+	s.opts.logger.Infof("[%s] gRPC 服务启动 [addr:%s]", s.opts.name, s.opts.grpcAddr)
 
 	go s.grpcServer.Serve(lis)
 	return nil
@@ -247,7 +248,7 @@ func (s *Server) startHTTP(ctx context.Context) error {
 		IdleTimeout:  s.opts.httpIdleTimeout,
 	}
 
-	s.opts.logger.Infof("[%s] HTTP server started [addr:%s]", s.opts.name, s.opts.httpAddr)
+	s.opts.logger.Infof("[%s] HTTP 服务启动 [addr:%s]", s.opts.name, s.opts.httpAddr)
 
 	errCh := make(chan error, 1)
 	go func() {

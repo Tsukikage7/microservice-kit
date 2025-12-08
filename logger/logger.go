@@ -62,13 +62,15 @@ const (
 	EncodeCallerFull  = "full"
 )
 
-// ContextKey 用于 context 值的自定义键类型.
-type ContextKey string
+// contextKey context 键类型.
+type contextKey string
 
-// 预定义的 context key.
+// 预定义的 context key，用于存储 trace 信息.
 const (
-	TraceIDKey   ContextKey = "trace_id"
-	RequestIDKey ContextKey = "request_id"
+	// TraceIDKey 用于在 context 中存储 traceId.
+	TraceIDKey contextKey = "logger:traceId"
+	// SpanIDKey 用于在 context 中存储 spanId.
+	SpanIDKey contextKey = "logger:spanId"
 )
 
 // Field 表示一个日志字段.
@@ -100,6 +102,16 @@ type Logger interface {
 	// 生命周期管理
 	Sync() error
 	Close() error
+}
+
+// ContextWithTraceID 将 traceId 注入到 context.
+func ContextWithTraceID(ctx context.Context, traceID string) context.Context {
+	return context.WithValue(ctx, TraceIDKey, traceID)
+}
+
+// ContextWithSpanID 将 spanId 注入到 context.
+func ContextWithSpanID(ctx context.Context, spanID string) context.Context {
+	return context.WithValue(ctx, SpanIDKey, spanID)
 }
 
 // NewLogger 创建 logger 实例.

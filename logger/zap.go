@@ -260,23 +260,32 @@ func (z *zapLogger) With(fields ...Field) Logger {
 	}
 }
 
-// WithContext 返回带有上下文的 logger.
+// WithContext 返回带有 context 中 trace 信息的 logger.
+//
+// 从 context 中提取 traceId 和 spanId，返回带有这些字段的新 logger.
+// 如果 context 中没有 trace 信息，返回当前 logger.
+//
+// 使用示例:
+//
+//	func (s *Service) Handle(ctx context.Context) {
+//	    s.log.WithContext(ctx).Info("处理请求")
+//	    // 输出: {"msg":"处理请求","traceId":"abc...","spanId":"def..."}
+//	}
 func (z *zapLogger) WithContext(ctx context.Context) Logger {
-	// 可扩展：从 context 中提取 trace_id, request_id 等
 	if ctx == nil {
 		return z
 	}
 
 	var fields []Field
 
-	// 提取 trace_id
-	if traceID := ctx.Value(TraceIDKey); traceID != nil {
-		fields = append(fields, Field{Key: string(TraceIDKey), Value: traceID})
+	// 从 context 获取 traceId
+	if traceID, ok := ctx.Value(TraceIDKey).(string); ok && traceID != "" {
+		fields = append(fields, Field{Key: "traceId", Value: traceID})
 	}
 
-	// 提取 request_id
-	if requestID := ctx.Value(RequestIDKey); requestID != nil {
-		fields = append(fields, Field{Key: string(RequestIDKey), Value: requestID})
+	// 从 context 获取 spanId
+	if spanID, ok := ctx.Value(SpanIDKey).(string); ok && spanID != "" {
+		fields = append(fields, Field{Key: "spanId", Value: spanID})
 	}
 
 	if len(fields) == 0 {

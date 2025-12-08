@@ -393,6 +393,14 @@ func (m *mockServerStream) RecvMsg(msg interface{}) error {
 	return nil
 }
 
+func (m *mockServerStream) SendHeader(md metadata.MD) error {
+	return nil
+}
+
+func (m *mockServerStream) SetHeader(md metadata.MD) error {
+	return nil
+}
+
 type mockClientStream struct {
 	grpc.ClientStream
 	recvErr error

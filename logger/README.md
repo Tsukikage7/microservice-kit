@@ -163,47 +163,79 @@ logger.Any("key", anyValue)             // 任意类型
 
 ## 上下文集成
 
-### 自动提取 trace_id 和 request_id
+### 与 trace 包集成（推荐）
+
+当使用 OpenTelemetry 追踪时，可以自动从 span 中提取 traceId 和 spanId：
+
+```go
+import (
+    "github.com/Tsukikage7/microservice-kit/logger"
+    "github.com/Tsukikage7/microservice-kit/trace"
+)
+
+// 在应用启动时设置（需要 trace 的服务）
+logger.SetTraceExtractor(trace.NewLoggerExtractor())
+
+// 使用 trace 中间件
+handler := trace.HTTPMiddleware("my-service")(mux)
+
+// 在业务代码中
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+
+    // 日志自动携带 traceId 和 spanId
+    log.WithContext(ctx).Info("处理请求")
+    // 输出: {"level":"INFO","timestamp":"...","msg":"处理请求","traceId":"abc123...","spanId":"def456..."}
+}
+```
+
+### 不使用 trace 包的方式
+
+如果不需要 OpenTelemetry 追踪，可以手动设置 context 值：
 
 ```go
 import "context"
 
-// 设置 context 值
+// 手动设置 context 值
 ctx := context.Background()
 ctx = context.WithValue(ctx, logger.TraceIDKey, "trace-abc123")
-ctx = context.WithValue(ctx, logger.RequestIDKey, "req-xyz789")
+ctx = context.WithValue(ctx, logger.SpanIDKey, "span-xyz789")
 
 // 从 context 创建 logger
 ctxLog := log.WithContext(ctx)
 ctxLog.Info("request processed")
-// 输出: {"level":"INFO","timestamp":"...","msg":"request processed","trace_id":"trace-abc123","request_id":"req-xyz789"}
+// 输出: {"level":"INFO","timestamp":"...","msg":"request processed","traceId":"trace-abc123","spanId":"span-xyz789"}
 ```
 
 ### 在 HTTP 中间件中使用
 
+结合 trace 包使用（推荐）：
+
 ```go
-func LoggingMiddleware(log logger.Logger) func(http.Handler) http.Handler {
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            // 从请求头获取或生成 trace_id
-            traceID := r.Header.Get("X-Trace-ID")
-            if traceID == "" {
-                traceID = uuid.New().String()
-            }
+import (
+    "github.com/Tsukikage7/microservice-kit/logger"
+    "github.com/Tsukikage7/microservice-kit/trace"
+)
 
-            // 注入到 context
-            ctx := context.WithValue(r.Context(), logger.TraceIDKey, traceID)
+func main() {
+    // 启用 trace 集成
+    logger.SetTraceExtractor(trace.NewLoggerExtractor())
 
-            // 创建带上下文的 logger
-            reqLog := log.WithContext(ctx)
-            reqLog.Info("request started",
-                logger.String("method", r.Method),
-                logger.String("path", r.URL.Path),
-            )
+    // 使用 trace 中间件（自动生成 traceId）
+    mux := http.NewServeMux()
+    handler := trace.HTTPMiddleware("my-service")(mux)
 
-            next.ServeHTTP(w, r.WithContext(ctx))
-        })
-    }
+    http.ListenAndServe(":8080", handler)
+}
+
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+
+    // 自动携带 traceId 和 spanId
+    log.WithContext(ctx).Info("request started",
+        logger.String("method", r.Method),
+        logger.String("path", r.URL.Path),
+    )
 }
 ```
 

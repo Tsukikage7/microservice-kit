@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,14 +14,26 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// TraceIDHeader 响应头中返回 traceId 的键名.
+const TraceIDHeader = "X-Trace-Id"
+
 // HTTPMiddleware 返回 HTTP 链路追踪中间件.
+//
+// 中间件会自动从请求头提取或生成 traceId，并通过响应头 X-Trace-Id 返回.
+// traceId 同时作为请求的唯一标识（requestId），可通过 TraceID(ctx) 获取.
 //
 // 使用示例:
 //
 //	mux := http.NewServeMux()
 //	mux.HandleFunc("/api/users", handleUsers)
-//	handler := tracing.HTTPMiddleware("my-service")(mux)
+//	handler := trace.HTTPMiddleware("my-service")(mux)
 //	http.ListenAndServe(":8080", handler)
+//
+//	// 在处理器中获取 traceId
+//	func handleUsers(w http.ResponseWriter, r *http.Request) {
+//	    traceId := trace.TraceID(r.Context())
+//	    // ...
+//	}
 func HTTPMiddleware(serviceName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +55,20 @@ func HTTPMiddleware(serviceName string) func(http.Handler) http.Handler {
 				),
 			)
 			defer span.End()
+
+			// 注入 trace 信息到 context，供 logger.WithContext 使用
+			spanCtx := span.SpanContext()
+			if spanCtx.HasTraceID() {
+				ctx = logger.ContextWithTraceID(ctx, spanCtx.TraceID().String())
+			}
+			if spanCtx.HasSpanID() {
+				ctx = logger.ContextWithSpanID(ctx, spanCtx.SpanID().String())
+			}
+
+			// 在响应头中返回 traceId，便于客户端关联请求
+			if spanCtx.TraceID().IsValid() {
+				w.Header().Set(TraceIDHeader, spanCtx.TraceID().String())
+			}
 
 			// 使用包装的 ResponseWriter 捕获状态码
 			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}

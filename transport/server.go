@@ -121,7 +121,6 @@ func WithSignals(signals ...os.Signal) AppOption {
 	}
 }
 
-
 // WithConfig 从配置结构体设置应用选项.
 // 仅设置非零值字段，零值字段将保持默认值.
 func WithConfig(cfg ApplicationConfig) AppOption {
