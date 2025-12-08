@@ -2,7 +2,7 @@ package messaging
 
 import "errors"
 
-// 错误定义.
+// 预定义错误.
 //
 // 所有错误均可通过 errors.Is 进行判断:
 //

@@ -22,14 +22,20 @@ const (
 	TypeGORM = "gorm"
 )
 
-// 错误定义.
+// 预定义错误.
 var (
-	ErrNilConfig         = errors.New("database: 配置为空")
-	ErrNilLogger         = errors.New("database: 日志记录器为空")
-	ErrEmptyDriver       = errors.New("database: 驱动类型为空")
-	ErrEmptyDSN          = errors.New("database: 连接字符串为空")
+	// ErrNilConfig 配置为空.
+	ErrNilConfig = errors.New("database: 配置为空")
+	// ErrNilLogger 日志记录器为空.
+	ErrNilLogger = errors.New("database: 日志记录器为空")
+	// ErrEmptyDriver 驱动类型为空.
+	ErrEmptyDriver = errors.New("database: 驱动类型为空")
+	// ErrEmptyDSN 连接字符串为空.
+	ErrEmptyDSN = errors.New("database: 连接字符串为空")
+	// ErrUnsupportedDriver 不支持的驱动类型.
 	ErrUnsupportedDriver = errors.New("database: 不支持的驱动类型")
-	ErrUnsupportedType   = errors.New("database: 不支持的 ORM 类型")
+	// ErrUnsupportedType 不支持的 ORM 类型.
+	ErrUnsupportedType = errors.New("database: 不支持的 ORM 类型")
 )
 
 // Config 数据库配置.

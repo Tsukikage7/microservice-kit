@@ -10,15 +10,15 @@ import (
 	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
-// ServiceInfo 服务信息.
+// ServiceInfo 表示服务信息.
 type ServiceInfo struct {
-	Name           string                   // 服务名称
-	Addr           string                   // 服务地址 (host:port)
-	Protocol       string                   // 协议类型 (grpc/http)
-	HealthEndpoint *transport.HealthEndpoint // 健康检查端点 (可选，自动检测)
+	Name           string
+	Addr           string
+	Protocol       string
+	HealthEndpoint *transport.HealthEndpoint
 }
 
-// ServiceRegistry 服务注册器，管理多个服务的注册和注销.
+// ServiceRegistry 管理多个服务的注册和注销.
 type ServiceRegistry struct {
 	discovery  Discovery
 	logger     logger.Logger
@@ -59,7 +59,7 @@ func (r *ServiceRegistry) AddHTTP(name, addr string) *ServiceRegistry {
 	return r.AddService(name, addr, ProtocolHTTP)
 }
 
-// AddServer 从 transport.Server 添加服务，自动检测健康检查端点.
+// AddServer 从 Server 添加服务，自动检测健康检查端点.
 // 如果 Server 实现了 HealthCheckable 接口，将自动提取健康检查配置.
 func (r *ServiceRegistry) AddServer(name string, server transport.Server) *ServiceRegistry {
 	r.mu.Lock()
@@ -69,11 +69,8 @@ func (r *ServiceRegistry) AddServer(name string, server transport.Server) *Servi
 		Name: name,
 		Addr: server.Addr(),
 	}
-
-	// 根据 Server 名称推断协议类型
 	info.Protocol = r.inferProtocol(server)
 
-	// 如果 Server 实现了 HealthCheckable 接口，提取健康检查端点
 	if hc, ok := server.(transport.HealthCheckable); ok {
 		info.HealthEndpoint = hc.HealthEndpoint()
 	}
@@ -82,7 +79,7 @@ func (r *ServiceRegistry) AddServer(name string, server transport.Server) *Servi
 	return r
 }
 
-// AddServerWithProtocol 从 transport.Server 添加服务，指定协议类型.
+// AddServerWithProtocol 从 Server 添加服务，指定协议类型.
 func (r *ServiceRegistry) AddServerWithProtocol(name string, server transport.Server, protocol string) *ServiceRegistry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -93,7 +90,6 @@ func (r *ServiceRegistry) AddServerWithProtocol(name string, server transport.Se
 		Protocol: protocol,
 	}
 
-	// 如果 Server 实现了 HealthCheckable 接口，提取健康检查端点
 	if hc, ok := server.(transport.HealthCheckable); ok {
 		info.HealthEndpoint = hc.HealthEndpoint()
 	}
@@ -102,9 +98,7 @@ func (r *ServiceRegistry) AddServerWithProtocol(name string, server transport.Se
 	return r
 }
 
-// inferProtocol 根据 Server 类型推断协议.
 func (r *ServiceRegistry) inferProtocol(server transport.Server) string {
-	// 尝试从健康检查端点推断
 	if hc, ok := server.(transport.HealthCheckable); ok {
 		endpoint := hc.HealthEndpoint()
 		if endpoint != nil {
@@ -117,7 +111,6 @@ func (r *ServiceRegistry) inferProtocol(server transport.Server) string {
 		}
 	}
 
-	// 根据 Server 名称推断
 	name := server.Name()
 	switch {
 	case containsIgnoreCase(name, "grpc"):
@@ -125,7 +118,6 @@ func (r *ServiceRegistry) inferProtocol(server transport.Server) string {
 	case containsIgnoreCase(name, "http"):
 		return ProtocolHTTP
 	case containsIgnoreCase(name, "gateway"):
-		// Gateway 服务默认使用 gRPC 协议进行服务发现
 		return ProtocolGRPC
 	default:
 		return ProtocolGRPC
@@ -141,7 +133,6 @@ func (r *ServiceRegistry) RegisterAll(ctx context.Context) error {
 		var serviceID string
 		var err error
 
-		// 如果有健康检查端点，使用新的注册方法
 		if svc.HealthEndpoint != nil {
 			serviceID, err = r.discovery.RegisterWithHealthEndpoint(ctx, svc.Name, svc.Addr, svc.Protocol, svc.HealthEndpoint)
 		} else {
@@ -151,7 +142,6 @@ func (r *ServiceRegistry) RegisterAll(ctx context.Context) error {
 		if err != nil {
 			r.logger.Errorf("注册服务失败 [服务名:%s] [地址:%s] [协议:%s] [错误:%v]",
 				svc.Name, svc.Addr, svc.Protocol, err)
-			// 回滚已注册的服务
 			r.unregisterAllLocked(ctx)
 			return err
 		}
@@ -174,7 +164,6 @@ func (r *ServiceRegistry) UnregisterAll(ctx context.Context) error {
 	return r.unregisterAllLocked(ctx)
 }
 
-// unregisterAllLocked 注销所有服务（内部方法，需要持有锁）.
 func (r *ServiceRegistry) unregisterAllLocked(ctx context.Context) error {
 	var lastErr error
 	for _, serviceID := range r.serviceIDs {
@@ -189,19 +178,16 @@ func (r *ServiceRegistry) unregisterAllLocked(ctx context.Context) error {
 	return lastErr
 }
 
-// AfterStartHook 返回服务启动后的注册钩子.
-// 可直接用于 transport.HooksBuilder.AfterStart()
+// AfterStartHook 返回服务启动后的注册钩子，可用于 HooksBuilder.AfterStart.
 func (r *ServiceRegistry) AfterStartHook() func(ctx context.Context) error {
 	return r.RegisterAll
 }
 
-// BeforeStopHook 返回服务停止前的注销钩子.
-// 可直接用于 transport.HooksBuilder.BeforeStop()
+// BeforeStopHook 返回服务停止前的注销钩子，可用于 HooksBuilder.BeforeStop.
 func (r *ServiceRegistry) BeforeStopHook() func(ctx context.Context) error {
 	return r.UnregisterAll
 }
 
-// containsIgnoreCase 检查字符串是否包含子串（忽略大小写）.
 func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

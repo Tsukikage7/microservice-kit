@@ -142,16 +142,6 @@ func TestConfig_GetServiceConfig(t *testing.T) {
 	}
 }
 
-func TestConfigError_Error(t *testing.T) {
-	err := &ConfigError{
-		Field:   "type",
-		Message: "不支持的服务发现类型",
-	}
-
-	expected := "配置错误 [type]: 不支持的服务发现类型"
-	assert.Equal(t, expected, err.Error())
-}
-
 func TestConstants(t *testing.T) {
 	// 测试类型常量
 	assert.Equal(t, "consul", TypeConsul)

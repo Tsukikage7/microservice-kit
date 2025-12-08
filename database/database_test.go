@@ -202,10 +202,8 @@ func (s *DatabaseTestSuite) TestAsGORM() {
 	s.NoError(err)
 	defer db.Close()
 
-	gormDB, ok := AsGORM(db)
-	s.True(ok)
+	gormDB := AsGORM(db)
 	s.NotNil(gormDB)
-	s.NotNil(gormDB.GORM())
 }
 
 // GORMTestSuite GORM 功能测试套件.
@@ -243,7 +241,7 @@ func (s *GORMTestSuite) TearDownSuite() {
 }
 
 type TestUser struct {
-	BaseModel
+	BaseModel[uint]
 	Name  string `gorm:"size:100"`
 	Email string `gorm:"size:200;uniqueIndex"`
 }
@@ -253,11 +251,10 @@ func (s *GORMTestSuite) TestAutoMigrate() {
 	s.NoError(err)
 
 	// 验证表已创建
-	gormDB, ok := AsGORM(s.db)
-	s.True(ok)
+	gormDB := AsGORM(s.db)
 
 	var count int64
-	err = gormDB.GORM().Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_users'").Scan(&count).Error
+	err = gormDB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_users'").Scan(&count).Error
 	s.NoError(err)
 	s.Equal(int64(1), count)
 }
@@ -282,9 +279,7 @@ func (s *GORMTestSuite) TestCRUD() {
 	err := s.db.AutoMigrate(&TestUser{})
 	s.NoError(err)
 
-	gormDB, ok := AsGORM(s.db)
-	s.True(ok)
-	db := gormDB.GORM()
+	db := AsGORM(s.db)
 
 	// Create
 	user := &TestUser{Name: "John", Email: "john@example.com"}

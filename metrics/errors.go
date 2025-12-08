@@ -2,6 +2,7 @@ package metrics
 
 import "errors"
 
+// 预定义错误.
 var (
 	// ErrNilConfig 指标配置为空.
 	ErrNilConfig = errors.New("指标配置为空")

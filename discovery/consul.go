@@ -11,14 +11,14 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-// consulDiscovery Consul服务发现实现.
+// consulDiscovery 是 Consul 服务发现实现.
 type consulDiscovery struct {
 	client *api.Client
 	config *Config
 	logger logger.Logger
 }
 
-// newConsulDiscovery 创建Consul服务发现实例.
+// newConsulDiscovery 创建 Consul 服务发现实例.
 func newConsulDiscovery(config *Config, log logger.Logger) (Discovery, error) {
 	// 创建Consul客户端配置
 	consulConfig := api.DefaultConfig()
