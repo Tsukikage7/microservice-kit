@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
@@ -237,7 +238,13 @@ func (s *Server) connectGateway() error {
 
 func (s *Server) startHTTP(ctx context.Context) error {
 	// 使用健康检查中间件包装 mux
-	handler := health.Middleware(s.health)(s.mux)
+	var handler http.Handler = health.Middleware(s.health)(s.mux)
+
+	// 如果启用链路追踪，使用 trace 中间件包装（在最外层）
+	if s.opts.tracerName != "" {
+		handler = tracing.HTTPMiddleware(s.opts.tracerName)(handler)
+	}
+
 	s.httpHandler = handler
 
 	s.httpServer = &http.Server{

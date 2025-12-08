@@ -1,11 +1,11 @@
-# trace
+# tracing
 
 提供基于 OpenTelemetry 的分布式链路追踪功能，支持 OTLP HTTP 协议导出、HTTP 中间件和 gRPC 拦截器。
 
 ## 安装
 
 ```go
-import "github.com/Tsukikage7/microservice-kit/trace"
+import "github.com/Tsukikage7/microservice-kit/tracing"
 ```
 
 ## 快速开始
@@ -70,7 +70,7 @@ func EndpointMiddleware(serviceName, operationName string) transport.Middleware
 
 ```go
 // 创建 Endpoint 链路追踪器
-tracer := trace.NewEndpointTracer("user-service")
+tracer := tracing.NewEndpointTracer("user-service")
 
 // 为不同方法创建中间件
 getUserEndpoint = tracer.Middleware("GetUser")(getUserEndpoint)
@@ -222,7 +222,7 @@ import (
     "log"
     "net/http"
 
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
     "go.opentelemetry.io/otel/attribute"
 )
 
@@ -291,7 +291,7 @@ import (
     "log"
     "net"
 
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
     "google.golang.org/grpc"
     pb "your-project/proto"
 )
@@ -356,7 +356,7 @@ import (
     "context"
     "log"
 
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     pb "your-project/proto"

@@ -170,14 +170,14 @@ logger.Any("key", anyValue)             // 任意类型
 ```go
 import (
     "github.com/Tsukikage7/microservice-kit/logger"
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
 )
 
 // 在应用启动时设置（需要 trace 的服务）
-logger.SetTraceExtractor(trace.NewLoggerExtractor())
+logger.SetTraceExtractor(tracing.NewLoggerExtractor())
 
 // 使用 trace 中间件
-handler := trace.HTTPMiddleware("my-service")(mux)
+handler := tracing.HTTPMiddleware("my-service")(mux)
 
 // 在业务代码中
 func handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -214,16 +214,16 @@ ctxLog.Info("request processed")
 ```go
 import (
     "github.com/Tsukikage7/microservice-kit/logger"
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
 )
 
 func main() {
     // 启用 trace 集成
-    logger.SetTraceExtractor(trace.NewLoggerExtractor())
+    logger.SetTraceExtractor(tracing.NewLoggerExtractor())
 
     // 使用 trace 中间件（自动生成 traceId）
     mux := http.NewServeMux()
-    handler := trace.HTTPMiddleware("my-service")(mux)
+    handler := tracing.HTTPMiddleware("my-service")(mux)
 
     http.ListenAndServe(":8080", handler)
 }

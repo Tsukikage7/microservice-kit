@@ -16,7 +16,7 @@ go get github.com/Tsukikage7/microservice-kit
 |---|------|:--------:|:----:|:----:|
 | [transport](./transport/) | 传输层抽象（Endpoint、Middleware） | ✅ 核心 | - | - |
 | [metrics](./metrics/) | Prometheus 指标收集 | ✅ | ✅ | ✅ |
-| [trace](./trace/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
+| [tracing](./tracing/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
 | [ratelimit](./ratelimit/) | 限流（令牌桶、滑动窗口、分布式） | ✅ | ✅ | ✅ |
 | [retry](./retry/) | 重试机制（指数退避） | ✅ | ✅ | ✅ |
 | [jwt](./jwt/) | JWT 认证 | ✅ | ✅ | ✅ |
@@ -98,7 +98,7 @@ import (
     "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
 )
 
 func main() {
@@ -113,10 +113,10 @@ func main() {
     })
 
     // 初始化链路追踪
-    tp, _ := trace.NewTracer(&trace.TracingConfig{
+    tp, _ := tracing.NewTracer(&tracing.TracingConfig{
         Enabled:      true,
         SamplingRate: 0.1,
-        OTLP:         &trace.OTLPConfig{Endpoint: "localhost:4318"},
+        OTLP:         &tracing.OTLPConfig{Endpoint: "localhost:4318"},
     }, "my-service", "1.0.0")
     defer tp.Shutdown(context.Background())
 
@@ -139,7 +139,7 @@ func main() {
     // 应用中间件（从外到内）
     var handler http.Handler = mux
     handler = metrics.HTTPMiddleware(collector)(handler)
-    handler = trace.HTTPMiddleware("my-service")(handler)
+    handler = tracing.HTTPMiddleware("my-service")(handler)
     handler = ratelimit.HTTPMiddleware(limiter)(handler)
     handler = jwt.HTTPMiddleware(j)(handler)
 
@@ -178,7 +178,7 @@ import (
     "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
     "google.golang.org/grpc"
 )
 
@@ -189,9 +189,9 @@ func main() {
 
     // 初始化组件
     collector := metrics.MustNewMetrics(&metrics.Config{Namespace: "my_service"})
-    tp, _ := trace.NewTracer(&trace.TracingConfig{
+    tp, _ := tracing.NewTracer(&tracing.TracingConfig{
         Enabled: true,
-        OTLP:    &trace.OTLPConfig{Endpoint: "localhost:4318"},
+        OTLP:    &tracing.OTLPConfig{Endpoint: "localhost:4318"},
     }, "my-service", "1.0.0")
     defer tp.Shutdown(context.Background())
     limiter := ratelimit.NewTokenBucket(1000, 100)
@@ -208,13 +208,13 @@ func main() {
     server := grpc.NewServer(
         grpc.ChainUnaryInterceptor(
             metrics.UnaryServerInterceptor(collector),
-            trace.UnaryServerInterceptor("my-service"),
+            tracing.UnaryServerInterceptor("my-service"),
             ratelimit.UnaryServerInterceptor(limiter),
             jwt.UnaryServerInterceptor(j),
         ),
         grpc.ChainStreamInterceptor(
             metrics.StreamServerInterceptor(collector),
-            trace.StreamServerInterceptor("my-service"),
+            tracing.StreamServerInterceptor("my-service"),
             ratelimit.StreamServerInterceptor(limiter),
             jwt.StreamServerInterceptor(j),
         ),
@@ -239,7 +239,7 @@ Endpoint 中间件用于 `transport.Endpoint` 层，适合服务内部的横切�
 import (
     "github.com/Tsukikage7/microservice-kit/transport"
     "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/trace"
+    "github.com/Tsukikage7/microservice-kit/tracing"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
     "github.com/Tsukikage7/microservice-kit/retry"
     "github.com/Tsukikage7/microservice-kit/jwt"
@@ -253,7 +253,7 @@ var myEndpoint transport.Endpoint = func(ctx context.Context, req any) (any, err
 // 服务端中间件（从外到内执行）
 myEndpoint = transport.Chain(
     metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
-    trace.EndpointMiddleware("my-service", "MyMethod"),
+    tracing.EndpointMiddleware("my-service", "MyMethod"),
     ratelimit.EndpointMiddleware(limiter),
     jwt.NewParser(j),
 )(myEndpoint)
@@ -261,7 +261,7 @@ myEndpoint = transport.Chain(
 // 客户端中间件
 clientEndpoint = transport.Chain(
     metrics.EndpointMiddleware(collector, "my-service", "MyMethod"),
-    trace.EndpointMiddleware("my-service", "MyMethod"),
+    tracing.EndpointMiddleware("my-service", "MyMethod"),
     jwt.NewSigner(j),
     retry.EndpointMiddleware(retryConfig),
 )(clientEndpoint)
@@ -276,7 +276,7 @@ mux.HandleFunc("/api/users", handleUsers)
 // 应用中间件（从外到内执行）
 var handler http.Handler = mux
 handler = metrics.HTTPMiddleware(collector)(handler)
-handler = trace.HTTPMiddleware("my-service")(handler)
+handler = tracing.HTTPMiddleware("my-service")(handler)
 handler = ratelimit.HTTPMiddleware(limiter)(handler)
 handler = jwt.HTTPMiddleware(j)(handler)
 ```
@@ -288,13 +288,13 @@ handler = jwt.HTTPMiddleware(j)(handler)
 server := grpc.NewServer(
     grpc.ChainUnaryInterceptor(
         metrics.UnaryServerInterceptor(collector),
-        trace.UnaryServerInterceptor("my-service"),
+        tracing.UnaryServerInterceptor("my-service"),
         ratelimit.UnaryServerInterceptor(limiter),
         jwt.UnaryServerInterceptor(j),
     ),
     grpc.ChainStreamInterceptor(
         metrics.StreamServerInterceptor(collector),
-        trace.StreamServerInterceptor("my-service"),
+        tracing.StreamServerInterceptor("my-service"),
         ratelimit.StreamServerInterceptor(limiter),
         jwt.StreamServerInterceptor(j),
     ),
@@ -304,12 +304,12 @@ server := grpc.NewServer(
 conn, _ := grpc.Dial("localhost:50051",
     grpc.WithChainUnaryInterceptor(
         metrics.UnaryClientInterceptor(collector),
-        trace.UnaryClientInterceptor("my-service"),
+        tracing.UnaryClientInterceptor("my-service"),
         retry.UnaryClientInterceptor(retryConfig),
     ),
     grpc.WithChainStreamInterceptor(
         metrics.StreamClientInterceptor(collector),
-        trace.StreamClientInterceptor("my-service"),
+        tracing.StreamClientInterceptor("my-service"),
         retry.StreamClientInterceptor(retryConfig),
     ),
 )
@@ -456,7 +456,7 @@ defer scheduler.Stop()
 
 - **[transport](./transport/)** - 传输层抽象，定义 Endpoint 和 Middleware
 - **[metrics](./metrics/)** - Prometheus 指标收集
-- **[trace](./trace/)** - OpenTelemetry 链路追踪
+- **[tracing](./tracing/)** - OpenTelemetry 链路追踪
 - **[ratelimit](./ratelimit/)** - 限流（令牌桶、滑动窗口、固定窗口、分布式）
 - **[retry](./retry/)** - 重试机制（固定/指数/线性退避）
 - **[jwt](./jwt/)** - JWT 认证

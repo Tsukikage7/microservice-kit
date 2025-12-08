@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/trace"
+	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"google.golang.org/grpc"
@@ -153,38 +153,17 @@ func WithLivenessChecker(checkers ...health.Checker) Option {
 
 // WithTrace 启用链路追踪.
 //
-// 启用后，会自动添加 trace 拦截器，从请求中提取或生成 traceId/spanId，
-// 并注入到 context 中，业务代码可通过 log.WithContext(ctx) 自动获取这些字段.
-//
-// 注意: 需要先调用 trace.NewTracer() 初始化全局 TracerProvider.
-//
-// 使用示例:
-//
-//	// 初始化 TracerProvider
-//	tp := trace.MustNewTracer(cfg, "my-service", "1.0.0")
-//	defer tp.Shutdown(context.Background())
-//
-//	// 创建 gRPC 服务器
-//	srv := server.New(
-//	    server.WithLogger(log),
-//	    server.WithTrace("my-service"),
-//	)
-//
-//	// 业务代码中
-//	func (s *Server) GetUser(ctx context.Context, req *pb.Request) (*pb.Response, error) {
-//	    s.log.WithContext(ctx).Info("获取用户")
-//	    // 输出: {"msg":"获取用户","traceId":"abc...","spanId":"def..."}
-//	}
+// 注意: 需要先调用 tracing.NewTracer() 初始化全局 TracerProvider.
 func WithTrace(serviceName string) Option {
 	return func(o *options) {
 		o.tracerName = serviceName
 		// 将 trace 拦截器添加到拦截器链最前面
 		o.unaryInterceptors = append(
-			[]grpc.UnaryServerInterceptor{trace.UnaryServerInterceptor(serviceName)},
+			[]grpc.UnaryServerInterceptor{tracing.UnaryServerInterceptor(serviceName)},
 			o.unaryInterceptors...,
 		)
 		o.streamInterceptors = append(
-			[]grpc.StreamServerInterceptor{trace.StreamServerInterceptor(serviceName)},
+			[]grpc.StreamServerInterceptor{tracing.StreamServerInterceptor(serviceName)},
 			o.streamInterceptors...,
 		)
 	}

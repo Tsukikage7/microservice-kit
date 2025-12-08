@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
@@ -41,6 +42,9 @@ type options struct {
 	// Health (内置)
 	healthTimeout time.Duration
 	healthOptions []health.Option
+
+	// Trace
+	tracerName string // 链路追踪服务名，为空则不启用
 
 	logger logger.Logger
 }
@@ -172,5 +176,23 @@ func WithReadinessChecker(checkers ...health.Checker) Option {
 func WithLivenessChecker(checkers ...health.Checker) Option {
 	return func(o *options) {
 		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
+	}
+}
+
+// WithTrace 启用链路追踪（gRPC + HTTP 双端）.
+//
+// 注意: 需要先调用 tracing.NewTracer() 初始化全局 TracerProvider.
+func WithTrace(serviceName string) Option {
+	return func(o *options) {
+		o.tracerName = serviceName
+		// 将 trace 拦截器添加到拦截器链最前面
+		o.unaryInterceptors = append(
+			[]grpc.UnaryServerInterceptor{tracing.UnaryServerInterceptor(serviceName)},
+			o.unaryInterceptors...,
+		)
+		o.streamInterceptors = append(
+			[]grpc.StreamServerInterceptor{tracing.StreamServerInterceptor(serviceName)},
+			o.streamInterceptors...,
+		)
 	}
 }
