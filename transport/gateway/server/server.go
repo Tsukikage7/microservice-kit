@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
@@ -96,7 +97,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	var lastErr error
 
 	if s.httpServer != nil {
-		s.opts.logger.Infof("[%s] HTTP server stopping", s.opts.name)
+		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] HTTP server stopping")
 		if err := s.httpServer.Shutdown(ctx); err != nil {
 			lastErr = err
 		}
@@ -107,7 +108,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 
 	if s.grpcServer != nil {
-		s.opts.logger.Infof("[%s] gRPC server stopping", s.opts.name)
+		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] gRPC server stopping")
 		done := make(chan struct{})
 		go func() {
 			s.grpcServer.GracefulStop()
@@ -211,7 +212,10 @@ func (s *Server) startGRPC() error {
 		reflection.Register(s.grpcServer)
 	}
 
-	s.opts.logger.Infof("[%s] gRPC 服务启动 [addr:%s]", s.opts.name, s.opts.grpcAddr)
+	s.opts.logger.With(
+		logger.String("name", s.opts.name),
+		logger.String("addr", s.opts.grpcAddr),
+	).Info("[Gateway] gRPC 服务启动")
 
 	go s.grpcServer.Serve(lis)
 	return nil
@@ -255,7 +259,10 @@ func (s *Server) startHTTP(ctx context.Context) error {
 		IdleTimeout:  s.opts.httpIdleTimeout,
 	}
 
-	s.opts.logger.Infof("[%s] HTTP 服务启动 [addr:%s]", s.opts.name, s.opts.httpAddr)
+	s.opts.logger.With(
+		logger.String("name", s.opts.name),
+		logger.String("addr", s.opts.httpAddr),
+	).Info("[Gateway] HTTP 服务启动")
 
 	errCh := make(chan error, 1)
 	go func() {

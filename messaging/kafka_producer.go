@@ -97,7 +97,7 @@ func NewKafkaProducer(brokers []string, opts ...ProducerOption) (*KafkaProducer,
 	}
 
 	if p.logger != nil {
-		p.logger.Debugf("[Messaging] Kafka生产者启动: brokers=%v", brokers)
+		p.logger.With(logger.Any("brokers", brokers)).Debug("[Messaging] Kafka生产者启动")
 	}
 
 	return p, nil

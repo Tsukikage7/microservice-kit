@@ -29,7 +29,10 @@ func newConsulDiscovery(config *Config, log logger.Logger) (Discovery, error) {
 	// 创建客户端
 	client, err := api.NewClient(consulConfig)
 	if err != nil {
-		log.Errorf("[Discovery] 创建consul客户端失败 [地址:%s] [错误:%v]", consulConfig.Address, err)
+		log.With(
+			logger.String("addr", consulConfig.Address),
+			logger.Err(err),
+		).Error("[Discovery] 创建consul客户端失败")
 		return nil, ErrClientCreate
 	}
 
@@ -87,17 +90,21 @@ func (c *consulDiscovery) Register(ctx context.Context, serviceName, address str
 	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
 	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
 	if err != nil {
-		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [地址:%s:%d] [错误:%v]",
-			serviceName, host, port, err)
+		c.logger.With(
+			logger.String("serviceName", serviceName),
+			logger.String("host", host),
+			logger.Int("port", port),
+			logger.Err(err),
+		).Error("[Discovery] consul服务注册失败")
 		return "", ErrRegister
 	}
 
-	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s:%d]",
-		serviceName,
-		serviceID,
-		host,
-		port,
-	)
+	c.logger.With(
+		logger.String("serviceName", serviceName),
+		logger.String("serviceID", serviceID),
+		logger.String("host", host),
+		logger.Int("port", port),
+	).Debug("[Discovery] 服务注册成功")
 
 	return serviceID, nil
 }
@@ -160,20 +167,25 @@ func (c *consulDiscovery) RegisterWithProtocol(ctx context.Context, serviceName,
 	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
 	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
 	if err != nil {
-		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [协议:%s] [地址:%s:%d] [错误:%v]",
-			serviceName, protocol, host, port, err)
+		c.logger.With(
+			logger.String("serviceName", serviceName),
+			logger.String("protocol", protocol),
+			logger.String("host", host),
+			logger.Int("port", port),
+			logger.Err(err),
+		).Error("[Discovery] consul服务注册失败")
 		return "", ErrRegister
 	}
 
-	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s] [%s:%d] [v%s] [tags:%v]",
-		serviceName,
-		protocol,
-		serviceID,
-		host,
-		port,
-		serviceMeta.Version,
-		tags,
-	)
+	c.logger.With(
+		logger.String("serviceName", serviceName),
+		logger.String("protocol", protocol),
+		logger.String("serviceID", serviceID),
+		logger.String("host", host),
+		logger.Int("port", port),
+		logger.String("version", serviceMeta.Version),
+		logger.Any("tags", tags),
+	).Debug("[Discovery] 服务注册成功")
 
 	return serviceID, nil
 }
@@ -235,8 +247,13 @@ func (c *consulDiscovery) RegisterWithHealthEndpoint(ctx context.Context, servic
 	opts := api.ServiceRegisterOpts{}.WithContext(ctx)
 	err = c.client.Agent().ServiceRegisterOpts(registration, opts)
 	if err != nil {
-		c.logger.Errorf("[Discovery] consul服务注册失败 [服务名:%s] [协议:%s] [地址:%s:%d] [错误:%v]",
-			serviceName, protocol, host, port, err)
+		c.logger.With(
+			logger.String("serviceName", serviceName),
+			logger.String("protocol", protocol),
+			logger.String("host", host),
+			logger.Int("port", port),
+			logger.Err(err),
+		).Error("[Discovery] consul服务注册失败")
 		return "", ErrRegister
 	}
 
@@ -244,15 +261,15 @@ func (c *consulDiscovery) RegisterWithHealthEndpoint(ctx context.Context, servic
 	if healthEndpoint != nil {
 		healthType = string(healthEndpoint.Type)
 	}
-	c.logger.Debugf("[Discovery] 服务注册成功 [%s] [%s] [%s] [%s:%d] [健康检查:%s] [v%s]",
-		serviceName,
-		protocol,
-		serviceID,
-		host,
-		port,
-		healthType,
-		serviceMeta.Version,
-	)
+	c.logger.With(
+		logger.String("serviceName", serviceName),
+		logger.String("protocol", protocol),
+		logger.String("serviceID", serviceID),
+		logger.String("host", host),
+		logger.Int("port", port),
+		logger.String("healthCheckType", healthType),
+		logger.String("version", serviceMeta.Version),
+	).Debug("[Discovery] 服务注册成功")
 
 	return serviceID, nil
 }
@@ -282,12 +299,15 @@ func (c *consulDiscovery) Unregister(ctx context.Context, serviceID string) erro
 		return ctx.Err()
 	case err := <-errChan:
 		if err != nil {
-			c.logger.Errorf("[Discovery] consul服务注销失败 [服务ID:%s] [错误:%v]", serviceID, err)
+			c.logger.With(
+				logger.String("serviceID", serviceID),
+				logger.Err(err),
+			).Error("[Discovery] consul服务注销失败")
 			return ErrUnregister
 		}
 	}
 
-	c.logger.Debugf("[Discovery] 服务注销成功 [%s]", serviceID)
+	c.logger.With(logger.String("serviceID", serviceID)).Debug("[Discovery] 服务注销成功")
 	return nil
 }
 
@@ -302,7 +322,10 @@ func (c *consulDiscovery) Discover(ctx context.Context, serviceName string) ([]s
 	queryOpts = queryOpts.WithContext(ctx)
 	services, _, err := c.client.Health().Service(serviceName, "grpc", true, queryOpts)
 	if err != nil {
-		c.logger.Errorf("[Discovery] consul服务发现失败 [服务名:%s] [错误:%v]", serviceName, err)
+		c.logger.With(
+			logger.String("serviceName", serviceName),
+			logger.Err(err),
+		).Error("[Discovery] consul服务发现失败")
 		return nil, ErrDiscover
 	}
 
@@ -310,12 +333,15 @@ func (c *consulDiscovery) Discover(ctx context.Context, serviceName string) ([]s
 	for _, service := range services {
 		address := fmt.Sprintf("%s:%d", service.Service.Address, service.Service.Port)
 		addresses = append(addresses, address)
-		c.logger.Debugf("[Discovery] 发现服务实例 [服务名:%s] [地址:%s] [标签:%v]",
-			serviceName, address, service.Service.Tags)
+		c.logger.With(
+			logger.String("serviceName", serviceName),
+			logger.String("addr", address),
+			logger.Any("tags", service.Service.Tags),
+		).Debug("[Discovery] 发现服务实例")
 	}
 
 	if len(addresses) == 0 {
-		c.logger.Warnf("[Discovery] 未发现任何服务实例 [服务名:%s]", serviceName)
+		c.logger.With(logger.String("serviceName", serviceName)).Warn("[Discovery] 未发现任何服务实例")
 	}
 
 	return addresses, nil

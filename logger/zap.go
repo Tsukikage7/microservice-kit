@@ -249,7 +249,7 @@ func (z *zapLogger) Panicf(format string, args ...any) {
 func (z *zapLogger) With(fields ...Field) Logger {
 	zapFields := make([]zap.Field, len(fields))
 	for i, f := range fields {
-		zapFields[i] = zap.Any(f.Key, f.Value)
+		zapFields[i] = toZapField(f)
 	}
 
 	newLogger := z.logger.With(zapFields...)
@@ -257,6 +257,50 @@ func (z *zapLogger) With(fields ...Field) Logger {
 		logger:  newLogger,
 		sugar:   newLogger.Sugar(),
 		writers: z.writers,
+	}
+}
+
+// toZapField 将 Field 转换为 zap.Field.
+// 对于复杂类型使用 Reflect，确保走 AddReflected 路径以正确格式化输出.
+func toZapField(f Field) zap.Field {
+	switch v := f.Value.(type) {
+	case string:
+		return zap.String(f.Key, v)
+	case int:
+		return zap.Int(f.Key, v)
+	case int64:
+		return zap.Int64(f.Key, v)
+	case int32:
+		return zap.Int32(f.Key, v)
+	case int16:
+		return zap.Int16(f.Key, v)
+	case int8:
+		return zap.Int8(f.Key, v)
+	case uint:
+		return zap.Uint(f.Key, v)
+	case uint64:
+		return zap.Uint64(f.Key, v)
+	case uint32:
+		return zap.Uint32(f.Key, v)
+	case uint16:
+		return zap.Uint16(f.Key, v)
+	case uint8:
+		return zap.Uint8(f.Key, v)
+	case float64:
+		return zap.Float64(f.Key, v)
+	case float32:
+		return zap.Float32(f.Key, v)
+	case bool:
+		return zap.Bool(f.Key, v)
+	case time.Time:
+		return zap.Time(f.Key, v)
+	case time.Duration:
+		return zap.Duration(f.Key, v)
+	case error:
+		return zap.NamedError(f.Key, v)
+	default:
+		// 对于 slice、map、struct 等复杂类型，使用 Reflect 确保走 AddReflected 路径
+		return zap.Reflect(f.Key, v)
 	}
 }
 

@@ -180,7 +180,10 @@ func NewKafkaConsumer(brokers []string, groupID string, opts ...ConsumerOption) 
 	}
 
 	if c.logger != nil {
-		c.logger.Debugf("[Messaging] Kafka消费者启动: brokers=%v, groupID=%s", brokers, groupID)
+		c.logger.With(
+			logger.Any("brokers", brokers),
+			logger.String("groupID", groupID),
+		).Debug("[Messaging] Kafka消费者启动")
 	}
 
 	return c, nil
@@ -222,7 +225,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, topics []string, handler Me
 					return
 				}
 				if c.logger != nil {
-					c.logger.Errorf("[Messaging] 消费失败: %v", err)
+					c.logger.With(logger.Err(err)).Error("[Messaging] 消费失败")
 				}
 				time.Sleep(c.reconnectInterval)
 			}
@@ -246,7 +249,7 @@ func (c *KafkaConsumer) Consume(ctx context.Context, topics []string, handler Me
 					return
 				}
 				if c.logger != nil {
-					c.logger.Warnf("[Messaging] 消费者错误: %v", err)
+					c.logger.With(logger.Err(err)).Warn("[Messaging] 消费者错误")
 				}
 			}
 		}
@@ -367,8 +370,14 @@ func (c *KafkaConsumer) processMessage(session sarama.ConsumerGroupSession, msg 
 				// 指数退避：interval * 2^(attempt-1)
 				backoff := c.retryInterval * time.Duration(1<<(attempt-1))
 				if c.logger != nil {
-					c.logger.Warnf("[Messaging] 消息处理失败，%v后重试(%d/%d): topic=%s, offset=%d, error=%v",
-						backoff, attempt, c.maxRetries, msg.Topic, msg.Offset, err)
+					c.logger.With(
+						logger.Duration("backoff", backoff),
+						logger.Int("attempt", attempt),
+						logger.Int("maxRetries", c.maxRetries),
+						logger.String("topic", msg.Topic),
+						logger.Int64("offset", msg.Offset),
+						logger.Err(err),
+					).Warn("[Messaging] 消息处理失败，即将重试")
 				}
 				time.Sleep(backoff)
 				continue
@@ -390,8 +399,11 @@ func (c *KafkaConsumer) processMessage(session sarama.ConsumerGroupSession, msg 
 			c.metrics.RecordConsumeError(msg.Topic, c.groupID)
 		}
 		if c.logger != nil {
-			c.logger.Errorf("[Messaging] 消息处理失败，重试耗尽: topic=%s, offset=%d, error=%v",
-				msg.Topic, msg.Offset, lastErr)
+			c.logger.With(
+				logger.String("topic", msg.Topic),
+				logger.Int64("offset", msg.Offset),
+				logger.Err(lastErr),
+			).Error("[Messaging] 消息处理失败，重试耗尽")
 		}
 		// 发送到死信队列
 		if c.dlqProducer != nil && c.deadLetterTopic != "" {
@@ -415,7 +427,10 @@ func (c *KafkaConsumer) processMessage(session sarama.ConsumerGroupSession, msg 
 func (c *KafkaConsumer) recoverPanic(goroutineName string) {
 	if r := recover(); r != nil {
 		if c.logger != nil {
-			c.logger.Errorf("[Messaging] %s goroutine panic: %v", goroutineName, r)
+			c.logger.With(
+				logger.String("goroutine", goroutineName),
+				logger.Any("panic", r),
+			).Error("[Messaging] goroutine panic")
 		}
 	}
 }
@@ -443,11 +458,16 @@ func (c *KafkaConsumer) sendToDeadLetterQueue(ctx context.Context, msg *Message,
 
 	if _, sendErr := c.dlqProducer.SendMessage(ctx, dlqMsg); sendErr != nil {
 		if c.logger != nil {
-			c.logger.Errorf("[Messaging] 发送死信队列失败: topic=%s, offset=%d, error=%v",
-				msg.Topic, msg.Offset, sendErr)
+			c.logger.With(
+				logger.String("topic", msg.Topic),
+				logger.Int64("offset", msg.Offset),
+				logger.Err(sendErr),
+			).Error("[Messaging] 发送死信队列失败")
 		}
 	} else if c.logger != nil {
-		c.logger.Warnf("[Messaging] 消息已发送到死信队列: original_topic=%s, dlq_topic=%s",
-			msg.Topic, c.deadLetterTopic)
+		c.logger.With(
+			logger.String("originalTopic", msg.Topic),
+			logger.String("dlqTopic", c.deadLetterTopic),
+		).Warn("[Messaging] 消息已发送到死信队列")
 	}
 }

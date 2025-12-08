@@ -140,8 +140,12 @@ func (r *ServiceRegistry) RegisterAll(ctx context.Context) error {
 		}
 
 		if err != nil {
-			r.logger.Errorf("注册服务失败 [服务名:%s] [地址:%s] [协议:%s] [错误:%v]",
-				svc.Name, svc.Addr, svc.Protocol, err)
+			r.logger.With(
+				logger.String("serviceName", svc.Name),
+				logger.String("addr", svc.Addr),
+				logger.String("protocol", svc.Protocol),
+				logger.Err(err),
+			).Error("[Discovery] 注册服务失败")
 			r.unregisterAllLocked(ctx)
 			return err
 		}
@@ -151,8 +155,13 @@ func (r *ServiceRegistry) RegisterAll(ctx context.Context) error {
 		if svc.HealthEndpoint != nil {
 			healthType = string(svc.HealthEndpoint.Type)
 		}
-		r.logger.Infof("服务已注册 [服务名:%s] [地址:%s] [协议:%s] [健康检查:%s] [服务ID:%s]",
-			svc.Name, svc.Addr, svc.Protocol, healthType, serviceID)
+		r.logger.With(
+			logger.String("serviceName", svc.Name),
+			logger.String("addr", svc.Addr),
+			logger.String("protocol", svc.Protocol),
+			logger.String("healthCheckType", healthType),
+			logger.String("serviceID", serviceID),
+		).Info("[Discovery] 服务已注册")
 	}
 	return nil
 }
@@ -168,10 +177,13 @@ func (r *ServiceRegistry) unregisterAllLocked(ctx context.Context) error {
 	var lastErr error
 	for _, serviceID := range r.serviceIDs {
 		if err := r.discovery.Unregister(ctx, serviceID); err != nil {
-			r.logger.Errorf("注销服务失败 [服务ID:%s] [错误:%v]", serviceID, err)
+			r.logger.With(
+				logger.String("serviceID", serviceID),
+				logger.Err(err),
+			).Error("[Discovery] 注销服务失败")
 			lastErr = err
 		} else {
-			r.logger.Infof("服务已注销 [服务ID:%s]", serviceID)
+			r.logger.With(logger.String("serviceID", serviceID)).Info("[Discovery] 服务已注销")
 		}
 	}
 	r.serviceIDs = r.serviceIDs[:0]

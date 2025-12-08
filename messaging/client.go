@@ -160,7 +160,10 @@ func NewClient(opts ...ClientOption) (*Client, error) {
 	c.saramaClient = client
 
 	if c.logger != nil {
-		c.logger.Debugf("[Messaging] 客户端已创建: brokers=%v, clientID=%s", c.brokers, c.clientID)
+		c.logger.With(
+			logger.Any("brokers", c.brokers),
+			logger.String("clientID", c.clientID),
+		).Debug("[Messaging] 客户端已创建")
 	}
 
 	return c, nil
@@ -307,8 +310,10 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	c.mu.Unlock()
 
 	if c.logger != nil {
-		c.logger.Debugf("[Messaging] 开始优雅关闭，等待 %d 个生产者和 %d 个消费者...",
-			len(producers), len(consumers))
+		c.logger.With(
+			logger.Int("producers", len(producers)),
+			logger.Int("consumers", len(consumers)),
+		).Debug("[Messaging] 开始优雅关闭")
 	}
 
 	var wg sync.WaitGroup
@@ -348,7 +353,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		// 所有关闭完成
 	case <-ctx.Done():
 		if c.logger != nil {
-			c.logger.Warnf("[Messaging] 优雅关闭超时，强制关闭")
+			c.logger.Warn("[Messaging] 优雅关闭超时，强制关闭")
 		}
 	}
 
@@ -368,7 +373,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	}
 
 	if c.logger != nil {
-		c.logger.Debugf("[Messaging] 客户端已关闭")
+		c.logger.Debug("[Messaging] 客户端已关闭")
 	}
 
 	if len(errs) > 0 {

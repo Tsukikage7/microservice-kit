@@ -2,6 +2,7 @@
 package logger
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"sync"
@@ -218,22 +219,11 @@ func (c *consoleEncoder) AddReflected(key string, val interface{}) error {
 	switch v := val.(type) {
 	case string:
 		value = v
-	case int:
-		value = strconv.Itoa(v)
-	case int64:
-		value = strconv.FormatInt(v, 10)
-	case float64:
-		value = strconv.FormatFloat(v, 'g', -1, 64)
-	case bool:
-		value = strconv.FormatBool(v)
 	case error:
 		value = v.Error()
 	default:
-		if s, ok := val.(interface{ String() string }); ok {
-			value = s.String()
-		} else {
-			value = "<reflected>"
-		}
+		// 数组、切片、结构体等复杂类型统一使用 %v 格式化
+		value = fmt.Sprint(v)
 	}
 	formatField(c.fields, key, value)
 	return nil
@@ -247,14 +237,14 @@ func (c *consoleEncoder) OpenNamespace(key string) {
 	c.fieldsNum++ // 保持分隔符逻辑
 }
 
-// AddArray 添加数组字段.
+// AddArray 添加数组字段（不会被调用，Any 类型走 AddReflected）.
 func (c *consoleEncoder) AddArray(key string, arr zapcore.ArrayMarshaler) error {
 	c.addSeparator()
 	formatField(c.fields, key, "<array>")
 	return nil
 }
 
-// AddObject 添加对象字段.
+// AddObject 添加对象字段（不会被调用，Any 类型走 AddReflected）.
 func (c *consoleEncoder) AddObject(key string, obj zapcore.ObjectMarshaler) error {
 	c.addSeparator()
 	formatField(c.fields, key, "<object>")
@@ -346,21 +336,11 @@ func (c *consoleEncoder) getReflectedValue(field zapcore.Field) string {
 		switch v := field.Interface.(type) {
 		case string:
 			return v
-		case int:
-			return strconv.Itoa(v)
-		case int64:
-			return strconv.FormatInt(v, 10)
-		case float64:
-			return strconv.FormatFloat(v, 'g', -1, 64)
-		case bool:
-			return strconv.FormatBool(v)
 		case error:
 			return v.Error()
 		default:
-			if s, ok := v.(interface{ String() string }); ok {
-				return s.String()
-			}
-			return "<complex>"
+			// 数组、切片、结构体等复杂类型统一使用 %v 格式化
+			return fmt.Sprint(v)
 		}
 	}
 	if field.String != "" {
