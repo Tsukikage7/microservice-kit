@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -118,10 +119,13 @@ type GORMDatabase interface {
 	GORM() *gorm.DB
 }
 
+
 // AsGORM 将 Database 转换为 GORMDatabase.
-func AsGORM(db Database) (GORMDatabase, bool) {
-	gdb, ok := db.(*gormDatabase)
-	return gdb, ok
+func AsGORM(db Database) *gorm.DB {
+	if gdb, ok := db.(*gormDatabase); ok {
+		return gdb.db
+	}
+	panic("database: 无法提取 *gorm.DB，请确保使用 GORM 类型的数据库")
 }
 
 // gormLoggerAdapter GORM 日志适配器.
@@ -191,24 +195,13 @@ func (l *gormLoggerAdapter) Trace(_ context.Context, begin time.Time, fc func() 
 
 	switch {
 	case err != nil && !errors.Is(err, gorm.ErrRecordNotFound):
-		l.logger.Error("[Database] SQL 执行失败",
-			"error", err,
-			"elapsed", elapsed,
-			"rows", rows,
-			"sql", sql,
-		)
+		l.logger.Error(fmt.Sprintf("[Database] SQL 执行失败 | 错误=%v | 耗时=%v | 行数=%d | SQL=%s",
+			err, elapsed, rows, sql))
 	case elapsed > l.slowThreshold && l.slowThreshold > 0:
-		l.logger.Warn("[Database] 慢查询",
-			"elapsed", elapsed,
-			"threshold", l.slowThreshold,
-			"rows", rows,
-			"sql", sql,
-		)
+		l.logger.Warn(fmt.Sprintf("[Database] 慢查询 | 耗时=%v | 阈值=%v | 行数=%d | SQL=%s",
+			elapsed, l.slowThreshold, rows, sql))
 	default:
-		l.logger.Debug("[Database] SQL 执行成功",
-			"elapsed", elapsed,
-			"rows", rows,
-			"sql", sql,
-		)
+		l.logger.Debug(fmt.Sprintf("[Database] SQL 执行成功 | 耗时=%v | 行数=%d | SQL=%s",
+			elapsed, rows, sql))
 	}
 }
