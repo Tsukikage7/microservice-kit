@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/transport/response"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -45,6 +46,9 @@ type options struct {
 
 	// Trace
 	tracerName string // 链路追踪服务名，为空则不启用
+
+	// Response
+	enableResponse bool // 是否启用统一响应格式
 
 	logger logger.Logger
 }
@@ -194,5 +198,19 @@ func WithTrace(serviceName string) Option {
 			[]grpc.StreamServerInterceptor{tracing.StreamServerInterceptor(serviceName)},
 			o.streamInterceptors...,
 		)
+	}
+}
+
+// WithResponse 启用统一响应格式（gRPC + HTTP 双端）.
+//
+// 启用后:
+//   - HTTP 错误响应将使用统一的 JSON 格式: {"code": xxx, "message": "xxx"}
+//   - gRPC 错误将自动映射到正确的状态码
+//   - 内部错误（5xxxx）的详细信息将被隐藏
+func WithResponse() Option {
+	return func(o *options) {
+		o.enableResponse = true
+		// 将 response 拦截器添加到拦截器链末尾（在业务逻辑之后处理错误）
+		o.unaryInterceptors = append(o.unaryInterceptors, response.UnaryServerInterceptor())
 	}
 }

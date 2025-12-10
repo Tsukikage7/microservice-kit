@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/response"
 )
 
 // DecodeRequestFunc 从 HTTP 请求解码为业务请求对象.
@@ -152,6 +153,17 @@ func WithErrorEncoder(enc EncodeErrorFunc) EndpointOption {
 	}
 }
 
+// WithResponse 启用统一响应格式的错误编码器.
+//
+// 错误将以 {"code": xxx, "message": "xxx"} 格式返回，
+// 并自动映射到正确的 HTTP 状态码.
+// 内部错误（5xxxx）的详细信息将被隐藏.
+func WithResponse() EndpointOption {
+	return func(h *EndpointHandler) {
+		h.errorEncoder = responseErrorEncoder
+	}
+}
+
 // defaultErrorEncoder 默认错误编码器.
 func defaultErrorEncoder(_ context.Context, err error, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -159,10 +171,25 @@ func defaultErrorEncoder(_ context.Context, err error, w http.ResponseWriter) {
 	w.Write([]byte(err.Error()))
 }
 
+// responseErrorEncoder 统一响应格式的错误编码器.
+func responseErrorEncoder(_ context.Context, err error, w http.ResponseWriter) {
+	code := response.ExtractCode(err)
+	message := response.ExtractMessage(err)
+
+	resp := response.Response[any]{
+		Code:    code.Num,
+		Message: message,
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code.HTTPStatus)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // EncodeJSONResponse 通用 JSON 响应编码器.
 //
 // 便捷函数，用于快速设置 JSON 响应.
-func EncodeJSONResponse(_ context.Context, w http.ResponseWriter, response any) error {
+func EncodeJSONResponse(_ context.Context, w http.ResponseWriter, resp any) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	return json.NewEncoder(w).Encode(response)
+	return json.NewEncoder(w).Encode(resp)
 }

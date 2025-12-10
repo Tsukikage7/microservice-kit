@@ -26,7 +26,11 @@
 //	})
 package messaging
 
-import "context"
+import (
+	"context"
+
+	"github.com/Tsukikage7/microservice-kit/logger"
+)
 
 // MessageHandler 消息处理函数.
 type MessageHandler func(*Message) error
@@ -53,9 +57,21 @@ type Consumer interface {
 
 // NewProducer 根据配置创建生产者.
 func NewProducer(cfg *Config, opts ...ProducerOption) (Producer, error) {
+	// 提取 logger
+	var log logger.Logger
+	for _, opt := range opts {
+		po := &producerOptions{}
+		opt(po)
+		if po.logger != nil {
+			log = po.logger
+		}
+	}
+
 	switch cfg.Type {
 	case "kafka", "":
 		return NewKafkaProducer(cfg.Brokers, opts...)
+	case "rabbitmq":
+		return newRabbitMQProducer(cfg, log)
 	default:
 		return nil, ErrUnsupportedType
 	}
@@ -63,9 +79,21 @@ func NewProducer(cfg *Config, opts ...ProducerOption) (Producer, error) {
 
 // NewConsumer 根据配置创建消费者.
 func NewConsumer(cfg *Config, groupID string, opts ...ConsumerOption) (Consumer, error) {
+	// 提取 logger
+	var log logger.Logger
+	for _, opt := range opts {
+		co := &consumerOptions{}
+		opt(co)
+		if co.logger != nil {
+			log = co.logger
+		}
+	}
+
 	switch cfg.Type {
 	case "kafka", "":
 		return NewKafkaConsumer(cfg.Brokers, groupID, opts...)
+	case "rabbitmq":
+		return newRabbitMQConsumer(cfg, groupID, log)
 	default:
 		return nil, ErrUnsupportedType
 	}

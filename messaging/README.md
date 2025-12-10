@@ -18,8 +18,8 @@
 ## 支持的消息队列
 
 - [x] Apache Kafka
+- [x] RabbitMQ
 - [ ] RocketMQ (计划中)
-- [ ] RabbitMQ (计划中)
 
 ## 安装
 
@@ -366,6 +366,79 @@ if errors.Is(err, messaging.ErrClientClosed) {
 
 - `AutoCommit`: 禁用 - 手动提交，保证消息处理完成后再确认
 - `Offsets.Initial`: Newest - 从最新消息开始消费
+
+## RabbitMQ
+
+### 配置
+
+```go
+cfg := &messaging.Config{
+    Type: "rabbitmq",
+    URL:  "amqp://user:pass@localhost:5672/vhost",
+    RabbitMQ: &messaging.RabbitMQConfig{
+        Exchange:      "orders",      // 交换机名称
+        ExchangeType:  "direct",      // 交换机类型: direct, fanout, topic, headers
+        Durable:       true,          // 持久化
+        AutoAck:       false,         // 自动确认（建议关闭）
+        PrefetchCount: 10,            // 预取数量
+        Confirm:       true,          // 发布确认
+    },
+}
+
+// 创建生产者
+producer, err := messaging.NewProducer(cfg, messaging.WithProducerLogger(log))
+if err != nil {
+    log.Fatal(err)
+}
+defer producer.Close()
+
+// 发送消息
+msg, err := producer.SendMessage(ctx, &messaging.Message{
+    Topic: "order.created",  // 作为 routing key
+    Key:   []byte("order-123"),
+    Value: []byte(`{"id":"123"}`),
+})
+
+// 创建消费者
+consumer, err := messaging.NewConsumer(cfg, "order-service", messaging.WithConsumerLogger(log))
+if err != nil {
+    log.Fatal(err)
+}
+defer consumer.Close()
+
+// 消费消息
+consumer.Consume(ctx, []string{"order.created"}, func(msg *messaging.Message) error {
+    fmt.Printf("收到消息: %s\n", msg.Value)
+    return nil
+})
+```
+
+### 配置选项
+
+| 选项 | 类型 | 说明 |
+|------|------|------|
+| Exchange | string | 交换机名称 |
+| ExchangeType | string | 交换机类型: direct, fanout, topic, headers |
+| Durable | bool | 是否持久化（建议开启） |
+| AutoAck | bool | 是否自动确认（建议关闭） |
+| PrefetchCount | int | 预取数量（QoS） |
+| Confirm | bool | 是否启用发布确认 |
+
+### 交换机类型
+
+| 类型 | 说明 |
+|------|------|
+| direct | 精确匹配 routing key |
+| fanout | 广播到所有绑定队列 |
+| topic | 模式匹配 routing key（支持 * 和 #） |
+| headers | 基于消息头匹配 |
+
+### 特性
+
+- **自动重连**: 连接断开后自动重连
+- **发布确认**: 支持 publisher confirms 模式
+- **预取控制**: 支持 QoS 设置
+- **手动/自动确认**: 支持手动和自动消息确认
 
 ## 许可证
 

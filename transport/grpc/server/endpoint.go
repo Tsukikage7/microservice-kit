@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/response"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -47,6 +48,9 @@ type Handler interface {
 	ServeGRPC(ctx context.Context, request any) (context.Context, any, error)
 }
 
+// ErrorHandlerFunc 错误处理函数.
+type ErrorHandlerFunc func(err error) error
+
 // EndpointHandler 将 Endpoint 包装为 gRPC Handler.
 //
 // 示例：
@@ -57,11 +61,12 @@ type Handler interface {
 //	    encodeGetUserResponse,
 //	)
 type EndpointHandler struct {
-	endpoint transport.Endpoint
-	dec      DecodeRequestFunc
-	enc      EncodeResponseFunc
-	before   []RequestFunc
-	after    []ResponseFunc
+	endpoint     transport.Endpoint
+	dec          DecodeRequestFunc
+	enc          EncodeResponseFunc
+	before       []RequestFunc
+	after        []ResponseFunc
+	errorHandler ErrorHandlerFunc
 }
 
 // EndpointOption EndpointHandler 配置选项.
@@ -120,13 +125,13 @@ func (h *EndpointHandler) ServeGRPC(ctx context.Context, request any) (context.C
 	// 解码请求
 	req, err := h.dec(ctx, request)
 	if err != nil {
-		return ctx, nil, err
+		return ctx, nil, h.handleError(err)
 	}
 
 	// 调用 endpoint
 	response, err := h.endpoint(ctx, req)
 	if err != nil {
-		return ctx, nil, err
+		return ctx, nil, h.handleError(err)
 	}
 
 	// 执行 after 函数
@@ -138,10 +143,18 @@ func (h *EndpointHandler) ServeGRPC(ctx context.Context, request any) (context.C
 	// 编码响应
 	grpcResp, err := h.enc(ctx, response)
 	if err != nil {
-		return ctx, nil, err
+		return ctx, nil, h.handleError(err)
 	}
 
 	return ctx, grpcResp, nil
+}
+
+// handleError 处理错误.
+func (h *EndpointHandler) handleError(err error) error {
+	if h.errorHandler != nil {
+		return h.errorHandler(err)
+	}
+	return err
 }
 
 // WithBefore 添加请求前处理函数.
@@ -155,5 +168,22 @@ func WithBefore(funcs ...RequestFunc) EndpointOption {
 func WithAfter(funcs ...ResponseFunc) EndpointOption {
 	return func(h *EndpointHandler) {
 		h.after = append(h.after, funcs...)
+	}
+}
+
+// WithErrorHandler 设置错误处理器.
+func WithErrorHandler(handler ErrorHandlerFunc) EndpointOption {
+	return func(h *EndpointHandler) {
+		h.errorHandler = handler
+	}
+}
+
+// WithResponse 启用统一响应格式的错误处理.
+//
+// 错误将自动转换为正确的 gRPC 状态码，
+// 内部错误（5xxxx）的详细信息将被隐藏.
+func WithResponse() EndpointOption {
+	return func(h *EndpointHandler) {
+		h.errorHandler = response.GRPCError
 	}
 }
