@@ -21,7 +21,7 @@ import (
 func EndpointMiddleware(opts ...Option) transport.Middleware {
 	o := applyOptions(opts)
 	if o.Logger == nil {
-		panic("recovery: logger is required")
+		panic("recovery: 日志记录器不能为空")
 	}
 
 	return func(next transport.Endpoint) transport.Endpoint {

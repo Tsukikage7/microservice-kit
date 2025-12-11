@@ -17,7 +17,7 @@ JWT 认证服务，提供令牌生成、验证、刷新和撤销功能。
 package main
 
 import (
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
 )
 
@@ -110,7 +110,7 @@ Endpoint 中间件用于 `transport.Endpoint` 层，参考 [go-kit/kit/auth/jwt]
 ```go
 import (
     "github.com/Tsukikage7/microservice-kit/transport"
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
 )
 
 // 创建签名中间件
@@ -321,7 +321,7 @@ import (
     "time"
 
     jwtv5 "github.com/golang-jwt/jwt/v5"
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
 )
 

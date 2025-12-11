@@ -56,7 +56,7 @@ func New(opts ...Option) *Server {
 	}
 
 	if o.logger == nil {
-		panic("gateway: logger is required")
+		panic("gateway: 日志记录器不能为空")
 	}
 
 	// 应用 recovery 拦截器（必须在所有 option 处理之后）
@@ -135,7 +135,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	var lastErr error
 
 	if s.httpServer != nil {
-		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] HTTP server stopping")
+		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] HTTP服务器正在停止")
 		if err := s.httpServer.Shutdown(ctx); err != nil {
 			lastErr = err
 		}
@@ -146,7 +146,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 
 	if s.grpcServer != nil {
-		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] gRPC server stopping")
+		s.opts.logger.With(logger.String("name", s.opts.name)).Info("[Gateway] gRPC服务器正在停止")
 		done := make(chan struct{})
 		go func() {
 			s.grpcServer.GracefulStop()

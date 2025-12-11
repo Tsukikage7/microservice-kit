@@ -22,7 +22,7 @@ import (
 func HTTPMiddleware(opts ...Option) func(http.Handler) http.Handler {
 	o := applyOptions(opts)
 	if o.Logger == nil {
-		panic("recovery: logger is required")
+		panic("recovery: 日志记录器不能为空")
 	}
 
 	return func(next http.Handler) http.Handler {

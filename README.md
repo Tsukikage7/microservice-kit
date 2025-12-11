@@ -19,7 +19,7 @@ go get github.com/Tsukikage7/microservice-kit
 | [tracing](./tracing/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
 | [ratelimit](./ratelimit/) | 限流（令牌桶、滑动窗口、分布式） | ✅ | ✅ | ✅ |
 | [retry](./retry/) | 重试机制（指数退避） | ✅ | ✅ | ✅ |
-| [jwt](./jwt/) | JWT 认证 | ✅ | ✅ | ✅ |
+| [auth](./auth/) | 认证授权（JWT、API Key、RBAC） | ✅ | ✅ | ✅ |
 
 ### 基础设施组件
 
@@ -94,7 +94,7 @@ import (
     "context"
     "net/http"
 
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
@@ -174,7 +174,7 @@ import (
     "context"
     "net"
 
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
     "github.com/Tsukikage7/microservice-kit/metrics"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
@@ -242,7 +242,7 @@ import (
     "github.com/Tsukikage7/microservice-kit/tracing"
     "github.com/Tsukikage7/microservice-kit/ratelimit"
     "github.com/Tsukikage7/microservice-kit/retry"
-    "github.com/Tsukikage7/microservice-kit/jwt"
+    "github.com/Tsukikage7/microservice-kit/auth/jwt"
 )
 
 // 定义 Endpoint

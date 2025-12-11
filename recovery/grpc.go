@@ -27,7 +27,7 @@ import (
 func UnaryServerInterceptor(opts ...Option) grpc.UnaryServerInterceptor {
 	o := applyOptions(opts)
 	if o.Logger == nil {
-		panic("recovery: logger is required")
+		panic("recovery: 日志记录器不能为空")
 	}
 
 	return func(
@@ -79,7 +79,7 @@ func UnaryServerInterceptor(opts ...Option) grpc.UnaryServerInterceptor {
 func StreamServerInterceptor(opts ...Option) grpc.StreamServerInterceptor {
 	o := applyOptions(opts)
 	if o.Logger == nil {
-		panic("recovery: logger is required")
+		panic("recovery: 日志记录器不能为空")
 	}
 
 	return func(
