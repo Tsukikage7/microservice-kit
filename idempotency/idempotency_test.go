@@ -6,11 +6,41 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
-func TestMemoryStore(t *testing.T) {
-	store := NewMemoryStore()
-	defer store.Close()
+// testLogger 用于测试的模拟日志器.
+type testLogger struct{}
+
+func (m *testLogger) Debug(args ...any)                             {}
+func (m *testLogger) Debugf(format string, args ...any)             {}
+func (m *testLogger) Info(args ...any)                              {}
+func (m *testLogger) Infof(format string, args ...any)              {}
+func (m *testLogger) Warn(args ...any)                              {}
+func (m *testLogger) Warnf(format string, args ...any)              {}
+func (m *testLogger) Error(args ...any)                             {}
+func (m *testLogger) Errorf(format string, args ...any)             {}
+func (m *testLogger) Fatal(args ...any)                             {}
+func (m *testLogger) Fatalf(format string, args ...any)             {}
+func (m *testLogger) Panic(args ...any)                             {}
+func (m *testLogger) Panicf(format string, args ...any)             {}
+func (m *testLogger) With(fields ...logger.Field) logger.Logger     { return m }
+func (m *testLogger) WithContext(ctx context.Context) logger.Logger { return m }
+func (m *testLogger) Sync() error                                   { return nil }
+func (m *testLogger) Close() error                                  { return nil }
+
+// newTestStore 创建测试用的存储.
+func newTestStore() (*IdempotentStore, cache.Cache) {
+	memCache, _ := cache.NewMemoryCache(nil, &testLogger{})
+	kv := CacheKV(memCache)
+	return NewStore(kv), memCache
+}
+
+func TestRedisStore(t *testing.T) {
+	store, memCache := newTestStore()
+	defer memCache.Close()
 
 	ctx := context.Background()
 	key := "test-key"
@@ -114,8 +144,8 @@ func TestResultEncodeDecode(t *testing.T) {
 }
 
 func TestHTTPMiddleware(t *testing.T) {
-	store := NewMemoryStore()
-	defer store.Close()
+	store, memCache := newTestStore()
+	defer memCache.Close()
 
 	callCount := 0
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,8 +228,8 @@ func TestHTTPMiddleware(t *testing.T) {
 }
 
 func TestEndpointMiddleware(t *testing.T) {
-	store := NewMemoryStore()
-	defer store.Close()
+	store, memCache := newTestStore()
+	defer memCache.Close()
 
 	callCount := 0
 	endpoint := func(ctx context.Context, request any) (any, error) {
@@ -266,8 +296,8 @@ func TestEndpointMiddleware(t *testing.T) {
 }
 
 func TestIdempotentRequestInterface(t *testing.T) {
-	store := NewMemoryStore()
-	defer store.Close()
+	store, memCache := newTestStore()
+	defer memCache.Close()
 
 	callCount := 0
 	endpoint := func(ctx context.Context, request any) (any, error) {
@@ -310,8 +340,8 @@ func (r *testIdempotentRequest) IdempotencyKey() string {
 }
 
 func TestOptions(t *testing.T) {
-	store := NewMemoryStore()
-	defer store.Close()
+	store, memCache := newTestStore()
+	defer memCache.Close()
 
 	t.Run("WithTTL", func(t *testing.T) {
 		o := applyOptions(store, []Option{WithTTL(time.Hour)})

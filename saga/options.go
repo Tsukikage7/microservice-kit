@@ -23,7 +23,7 @@ type options struct {
 // defaultOptions 返回默认配置.
 func defaultOptions() *options {
 	return &options{
-		store:      NewNopStore(),
+		store:      newNopStore(),
 		timeout:    0, // 无超时
 		retryCount: 0, // 不重试
 		retryDelay: time.Second,
@@ -41,7 +41,8 @@ func applyOptions(opts []Option) *options {
 
 // WithStore 设置状态存储.
 //
-// 如果不设置，使用 NopStore（不保存状态）.
+// 如果不设置，使用内部空存储（不保存状态）.
+// 生产环境建议使用 NewRedisStore 保存状态.
 func WithStore(store Store) Option {
 	return func(o *options) {
 		o.store = store

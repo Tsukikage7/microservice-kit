@@ -3,7 +3,7 @@ package scheduler
 import (
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/lock"
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
@@ -13,9 +13,7 @@ type Option func(*options)
 // options 调度器内部配置.
 type options struct {
 	logger         logger.Logger
-	cache          cache.Cache
-	lockPrefix     string
-	instanceID     string
+	locker         lock.Locker
 	hooks          *Hooks
 	defaultTimeout time.Duration
 	lockTTL        time.Duration
@@ -28,8 +26,6 @@ func defaultOptions() *options {
 	return &options{
 		defaultTimeout: 5 * time.Minute,
 		lockTTL:        10 * time.Minute,
-		lockPrefix:     "scheduler:lock:",
-		instanceID:     generateInstanceID(),
 		withSeconds:    true,
 		location:       time.Local,
 	}
@@ -42,37 +38,19 @@ func WithLogger(log logger.Logger) Option {
 	}
 }
 
-// WithCache 设置缓存客户端（用于分布式锁）.
+// WithLocker 设置分布式锁.
 //
-// 使用 cache.Cache 接口的 TryLock/Unlock 方法实现分布式锁.
+// 用于分布式任务调度，确保同一任务在多实例间只执行一次.
 // 需要配合 Job.Distributed 使用.
 //
 // 示例:
 //
 //	redisCache, _ := cache.New(&cache.Config{Type: "redis", ...})
-//	s := scheduler.New(scheduler.WithCache(redisCache))
-func WithCache(c cache.Cache) Option {
+//	locker := lock.NewRedis(redisCache, lock.WithKeyPrefix("scheduler:"))
+//	s := scheduler.New(scheduler.WithLocker(locker))
+func WithLocker(l lock.Locker) Option {
 	return func(o *options) {
-		o.cache = c
-	}
-}
-
-// WithLockPrefix 设置分布式锁 key 前缀.
-//
-// 默认: "scheduler:lock:"
-func WithLockPrefix(prefix string) Option {
-	return func(o *options) {
-		o.lockPrefix = prefix
-	}
-}
-
-// WithInstanceID 设置实例 ID.
-//
-// 用于分布式锁的归属判断，确保只有持锁实例能释放锁.
-// 默认: 自动生成唯一 ID.
-func WithInstanceID(id string) Option {
-	return func(o *options) {
-		o.instanceID = id
+		o.locker = l
 	}
 }
 
@@ -125,7 +103,3 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
-// generateInstanceID 生成实例 ID.
-func generateInstanceID() string {
-	return time.Now().Format("20060102150405.000000000")
-}

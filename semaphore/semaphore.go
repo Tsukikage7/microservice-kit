@@ -1,19 +1,12 @@
-// Package semaphore 提供信号量并发控制.
+// Package semaphore 提供分布式信号量并发控制.
 //
 // 信号量用于限制对共享资源的并发访问数量，
-// 支持本地和分布式两种模式。
+// 适用于分布式部署场景.
 //
-// 本地信号量:
+// 基本用法:
 //
-//	sem := semaphore.NewLocal(10) // 最多10个并发
-//	if err := sem.Acquire(ctx); err != nil {
-//	    return err
-//	}
-//	defer sem.Release()
-//
-// 分布式信号量:
-//
-//	sem := semaphore.NewRedis(redisClient, "api-limit", 100)
+//	counter := semaphore.CacheCounter(cacheClient)
+//	sem := semaphore.New(counter, "api-limit", 100)
 //	if err := sem.Acquire(ctx); err != nil {
 //	    return err
 //	}
@@ -26,6 +19,7 @@ package semaphore
 
 import (
 	"context"
+	"time"
 )
 
 // Semaphore 信号量接口.
@@ -48,18 +42,21 @@ type Semaphore interface {
 	Size() int64
 }
 
-// Weighted 加权信号量接口.
+// Counter 信号量所需的计数器接口.
 //
-// 允许一次获取/释放多个许可.
-type Weighted interface {
-	Semaphore
+// 这是 semaphore 包的最小依赖接口.
+// 可以用 cache.Cache、Redis 客户端或其他存储实现.
+type Counter interface {
+	// Increment 原子增加计数并返回新值.
+	Increment(ctx context.Context, key string) (int64, error)
 
-	// AcquireN 获取 n 个许可.
-	AcquireN(ctx context.Context, n int64) error
+	// Decrement 原子减少计数并返回新值.
+	Decrement(ctx context.Context, key string) (int64, error)
 
-	// TryAcquireN 尝试获取 n 个许可.
-	TryAcquireN(ctx context.Context, n int64) bool
+	// Get 获取当前计数值.
+	Get(ctx context.Context, key string) (int64, error)
 
-	// ReleaseN 释放 n 个许可.
-	ReleaseN(ctx context.Context, n int64) error
+	// Expire 设置键的过期时间.
+	Expire(ctx context.Context, key string, ttl time.Duration) error
 }
+

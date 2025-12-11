@@ -279,14 +279,14 @@ func (s *cronScheduler) executeJob(job *Job) {
 	}
 
 	// 2. 分布式锁检查
-	if job.Distributed && s.opts.cache != nil {
-		lockKey := s.opts.lockPrefix + job.Name
+	if job.Distributed && s.opts.locker != nil {
+		lockKey := job.Name
 		lockTTL := s.opts.lockTTL
 		if job.Timeout > 0 && job.Timeout > lockTTL {
 			lockTTL = job.Timeout + time.Minute // 锁时间略大于任务超时
 		}
 
-		acquired, err := s.opts.cache.TryLock(ctx, lockKey, s.opts.instanceID, lockTTL)
+		acquired, err := s.opts.locker.TryLock(ctx, lockKey, lockTTL)
 		if err != nil {
 			s.logErrorf("获取分布式锁失败 [job:%s] [error:%v]", job.Name, err)
 			jc.Skipped = true
@@ -305,7 +305,7 @@ func (s *cronScheduler) executeJob(job *Job) {
 			return
 		}
 		defer func() {
-			if err := s.opts.cache.Unlock(ctx, lockKey, s.opts.instanceID); err != nil {
+			if err := s.opts.locker.Unlock(ctx, lockKey); err != nil {
 				s.logErrorf("释放分布式锁失败 [job:%s] [error:%v]", job.Name, err)
 			}
 		}()

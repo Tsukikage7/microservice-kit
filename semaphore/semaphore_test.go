@@ -10,11 +10,41 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+
+	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
-func TestLocalSemaphore(t *testing.T) {
-	sem := NewLocal(3)
-	defer sem.Close()
+// testLogger 用于测试的模拟日志器.
+type testLogger struct{}
+
+func (m *testLogger) Debug(args ...any)                             {}
+func (m *testLogger) Debugf(format string, args ...any)             {}
+func (m *testLogger) Info(args ...any)                              {}
+func (m *testLogger) Infof(format string, args ...any)              {}
+func (m *testLogger) Warn(args ...any)                              {}
+func (m *testLogger) Warnf(format string, args ...any)              {}
+func (m *testLogger) Error(args ...any)                             {}
+func (m *testLogger) Errorf(format string, args ...any)             {}
+func (m *testLogger) Fatal(args ...any)                             {}
+func (m *testLogger) Fatalf(format string, args ...any)             {}
+func (m *testLogger) Panic(args ...any)                             {}
+func (m *testLogger) Panicf(format string, args ...any)             {}
+func (m *testLogger) With(fields ...logger.Field) logger.Logger     { return m }
+func (m *testLogger) WithContext(ctx context.Context) logger.Logger { return m }
+func (m *testLogger) Sync() error                                   { return nil }
+func (m *testLogger) Close() error                                  { return nil }
+
+// newTestSemaphore 创建测试用的信号量.
+func newTestSemaphore(size int64) (*Distributed, cache.Cache) {
+	memCache, _ := cache.NewMemoryCache(nil, &testLogger{})
+	counter := CacheCounter(memCache)
+	return New(counter, "test-sem", size), memCache
+}
+
+func TestRedisSemaphore(t *testing.T) {
+	sem, memCache := newTestSemaphore(3)
+	defer memCache.Close()
 
 	ctx := context.Background()
 
@@ -66,7 +96,7 @@ func TestLocalSemaphore(t *testing.T) {
 	t.Run("context cancellation", func(t *testing.T) {
 		// 先占满
 		for i := 0; i < 3; i++ {
-			_ = sem.Acquire(ctx)
+			_ = sem.TryAcquire(ctx)
 		}
 
 		cancelCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
@@ -84,50 +114,9 @@ func TestLocalSemaphore(t *testing.T) {
 	})
 }
 
-func TestWeightedLocalSemaphore(t *testing.T) {
-	sem := NewWeightedLocal(10)
-	defer sem.Close()
-
-	ctx := context.Background()
-
-	t.Run("acquire N", func(t *testing.T) {
-		if err := sem.AcquireN(ctx, 5); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-
-		available, _ := sem.Available(ctx)
-		if available != 5 {
-			t.Errorf("expected 5 available, got %d", available)
-		}
-
-		if err := sem.ReleaseN(ctx, 5); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("try acquire N", func(t *testing.T) {
-		if !sem.TryAcquireN(ctx, 7) {
-			t.Error("expected to acquire 7")
-		}
-
-		// 剩余3个，尝试获取5个应该失败
-		if sem.TryAcquireN(ctx, 5) {
-			t.Error("expected to fail acquiring 5")
-		}
-
-		// 但3个应该可以
-		if !sem.TryAcquireN(ctx, 3) {
-			t.Error("expected to acquire 3")
-		}
-
-		// 释放
-		_ = sem.ReleaseN(ctx, 10)
-	})
-}
-
-func TestLocalConcurrency(t *testing.T) {
-	sem := NewLocal(5)
-	defer sem.Close()
+func TestRedisConcurrency(t *testing.T) {
+	sem, memCache := newTestSemaphore(5)
+	defer memCache.Close()
 
 	ctx := context.Background()
 	var maxConcurrent int32
@@ -165,8 +154,8 @@ func TestLocalConcurrency(t *testing.T) {
 }
 
 func TestEndpointMiddleware(t *testing.T) {
-	sem := NewLocal(2)
-	defer sem.Close()
+	sem, memCache := newTestSemaphore(2)
+	defer memCache.Close()
 
 	var callCount int32
 	endpoint := func(ctx context.Context, request any) (any, error) {
@@ -202,8 +191,8 @@ func TestEndpointMiddleware(t *testing.T) {
 }
 
 func TestEndpointMiddlewareWithBlock(t *testing.T) {
-	sem := NewLocal(2)
-	defer sem.Close()
+	sem, memCache := newTestSemaphore(2)
+	defer memCache.Close()
 
 	var callCount int32
 	endpoint := func(ctx context.Context, request any) (any, error) {
@@ -235,8 +224,8 @@ func TestEndpointMiddlewareWithBlock(t *testing.T) {
 }
 
 func TestHTTPMiddleware(t *testing.T) {
-	sem := NewLocal(1)
-	defer sem.Close()
+	sem, memCache := newTestSemaphore(1)
+	defer memCache.Close()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
@@ -282,8 +271,8 @@ func TestHTTPMiddleware(t *testing.T) {
 }
 
 func TestUnaryServerInterceptor(t *testing.T) {
-	sem := NewLocal(1)
-	defer sem.Close()
+	sem, memCache := newTestSemaphore(1)
+	defer memCache.Close()
 
 	handler := func(ctx context.Context, req any) (any, error) {
 		time.Sleep(100 * time.Millisecond)
@@ -325,36 +314,25 @@ func TestUnaryServerInterceptor(t *testing.T) {
 }
 
 func TestPanicOnInvalidSize(t *testing.T) {
-	t.Run("local", func(t *testing.T) {
+	t.Run("nil counter", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic")
 			}
 		}()
-		NewLocal(0)
+		New(nil, "test", 10)
 	})
 
-	t.Run("weighted local", func(t *testing.T) {
+	t.Run("zero size", func(t *testing.T) {
+		memCache, _ := cache.NewMemoryCache(nil, &testLogger{})
+		defer memCache.Close()
+
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expected panic")
 			}
 		}()
-		NewWeightedLocal(-1)
+		counter := CacheCounter(memCache)
+		New(counter, "test", 0)
 	})
-}
-
-func TestClosedSemaphore(t *testing.T) {
-	sem := NewLocal(1)
-	sem.Close()
-
-	ctx := context.Background()
-
-	if err := sem.Acquire(ctx); err != ErrClosed {
-		t.Errorf("expected ErrClosed, got %v", err)
-	}
-
-	if sem.TryAcquire(ctx) {
-		t.Error("expected TryAcquire to return false on closed semaphore")
-	}
 }

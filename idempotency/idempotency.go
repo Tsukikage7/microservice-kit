@@ -11,7 +11,8 @@
 //
 // 基本用法:
 //
-//	store := idempotency.NewRedisStore(redisClient)
+//	kv := idempotency.CacheKV(cacheClient)
+//	store := idempotency.NewStore(kv)
 //	handler = idempotency.HTTPMiddleware(store)(handler)
 //
 // 自定义键提取:
@@ -28,6 +29,27 @@ import (
 	"encoding/json"
 	"time"
 )
+
+// KV 幂等性存储所需的键值存储接口.
+//
+// 这是 idempotency 包的最小依赖接口.
+// 可以用 cache.Cache、Redis 客户端或其他存储实现.
+type KV interface {
+	// Get 获取键的值.
+	Get(ctx context.Context, key string) (string, error)
+
+	// Set 设置键值对.
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+
+	// SetNX 仅在键不存在时设置.
+	SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error)
+
+	// Exists 检查键是否存在.
+	Exists(ctx context.Context, key string) (bool, error)
+
+	// Del 删除键.
+	Del(ctx context.Context, keys ...string) error
+}
 
 // Result 幂等请求的结果.
 type Result struct {
