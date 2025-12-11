@@ -10,18 +10,18 @@ import (
 
 // DistributedLimiter 分布式限流器.
 //
-// 使用 Redis 等缓存实现分布式限流.
+// 使用 RateCounter 接口实现分布式限流.
 type DistributedLimiter struct {
-	cache  cache.Cache
-	prefix string
-	limit  int
-	window time.Duration
+	counter RateCounter
+	prefix  string
+	limit   int
+	window  time.Duration
 }
 
 // DistributedConfig 分布式限流配置.
 type DistributedConfig struct {
-	// Cache 缓存实例
-	Cache cache.Cache
+	// Counter 计数器实现（可用 CacheRateCounter 适配 cache.Cache）
+	Counter RateCounter
 
 	// Prefix 缓存键前缀
 	Prefix string
@@ -38,7 +38,7 @@ func NewDistributedLimiter(cfg *DistributedConfig) (*DistributedLimiter, error) 
 	if cfg == nil {
 		return nil, ErrInvalidConfig
 	}
-	if cfg.Cache == nil {
+	if cfg.Counter == nil {
 		return nil, ErrNilCache
 	}
 	if cfg.Limit <= 0 {
@@ -54,10 +54,10 @@ func NewDistributedLimiter(cfg *DistributedConfig) (*DistributedLimiter, error) 
 	}
 
 	return &DistributedLimiter{
-		cache:  cfg.Cache,
-		prefix: prefix,
-		limit:  cfg.Limit,
-		window: cfg.Window,
+		counter: cfg.Counter,
+		prefix:  prefix,
+		limit:   cfg.Limit,
+		window:  cfg.Window,
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func (dl *DistributedLimiter) AllowNWithKey(ctx context.Context, key string, n i
 	cacheKey := fmt.Sprintf("%s:%s", dl.prefix, key)
 
 	// 使用原子递增操作
-	count, err := dl.cache.IncrementBy(ctx, cacheKey, int64(n))
+	count, err := dl.counter.IncrementBy(ctx, cacheKey, int64(n))
 	if err != nil {
 		// 发生错误时默认放行，避免影响正常业务
 		return true
@@ -89,7 +89,7 @@ func (dl *DistributedLimiter) AllowNWithKey(ctx context.Context, key string, n i
 
 	// 首次设置过期时间
 	if count == int64(n) {
-		_ = dl.cache.Expire(ctx, cacheKey, dl.window)
+		_ = dl.counter.Expire(ctx, cacheKey, dl.window)
 	}
 
 	return count <= int64(dl.limit)
@@ -119,7 +119,7 @@ func (dl *DistributedLimiter) WaitNWithKey(ctx context.Context, key string, n in
 
 		// 获取剩余等待时间
 		cacheKey := fmt.Sprintf("%s:%s", dl.prefix, key)
-		ttl, err := dl.cache.TTL(ctx, cacheKey)
+		ttl, err := dl.counter.TTL(ctx, cacheKey)
 		if err != nil || ttl <= 0 {
 			ttl = time.Millisecond * 100
 		}
@@ -135,10 +135,10 @@ func (dl *DistributedLimiter) WaitNWithKey(ctx context.Context, key string, n in
 
 // KeyedDistributedLimiter 基于键的分布式限流器工厂.
 type KeyedDistributedLimiter struct {
-	cache  cache.Cache
-	prefix string
-	limit  int
-	window time.Duration
+	counter RateCounter
+	prefix  string
+	limit   int
+	window  time.Duration
 }
 
 // NewKeyedDistributedLimiter 创建基于键的分布式限流器工厂.
@@ -146,7 +146,7 @@ func NewKeyedDistributedLimiter(cfg *DistributedConfig) (*KeyedDistributedLimite
 	if cfg == nil {
 		return nil, ErrInvalidConfig
 	}
-	if cfg.Cache == nil {
+	if cfg.Counter == nil {
 		return nil, ErrNilCache
 	}
 	if cfg.Limit <= 0 {
@@ -162,10 +162,10 @@ func NewKeyedDistributedLimiter(cfg *DistributedConfig) (*KeyedDistributedLimite
 	}
 
 	return &KeyedDistributedLimiter{
-		cache:  cfg.Cache,
-		prefix: prefix,
-		limit:  cfg.Limit,
-		window: cfg.Window,
+		counter: cfg.Counter,
+		prefix:  prefix,
+		limit:   cfg.Limit,
+		window:  cfg.Window,
 	}, nil
 }
 
@@ -174,18 +174,18 @@ func NewKeyedDistributedLimiter(cfg *DistributedConfig) (*KeyedDistributedLimite
 // 返回 KeyedLimiterFunc 以便与 KeyedEndpointMiddleware 等配合使用.
 func (kdl *KeyedDistributedLimiter) GetLimiter(key string) Limiter {
 	return &keyedDistributedLimiterInstance{
-		cache:  kdl.cache,
-		key:    fmt.Sprintf("%s:%s", kdl.prefix, key),
-		limit:  kdl.limit,
-		window: kdl.window,
+		counter: kdl.counter,
+		key:     fmt.Sprintf("%s:%s", kdl.prefix, key),
+		limit:   kdl.limit,
+		window:  kdl.window,
 	}
 }
 
 type keyedDistributedLimiterInstance struct {
-	cache  cache.Cache
-	key    string
-	limit  int
-	window time.Duration
+	counter RateCounter
+	key     string
+	limit   int
+	window  time.Duration
 }
 
 func (i *keyedDistributedLimiterInstance) Allow(ctx context.Context) bool {
@@ -193,13 +193,13 @@ func (i *keyedDistributedLimiterInstance) Allow(ctx context.Context) bool {
 }
 
 func (i *keyedDistributedLimiterInstance) AllowN(ctx context.Context, n int) bool {
-	count, err := i.cache.IncrementBy(ctx, i.key, int64(n))
+	count, err := i.counter.IncrementBy(ctx, i.key, int64(n))
 	if err != nil {
 		return true
 	}
 
 	if count == int64(n) {
-		_ = i.cache.Expire(ctx, i.key, i.window)
+		_ = i.counter.Expire(ctx, i.key, i.window)
 	}
 
 	return count <= int64(i.limit)
@@ -215,7 +215,7 @@ func (i *keyedDistributedLimiterInstance) WaitN(ctx context.Context, n int) erro
 			return nil
 		}
 
-		ttl, err := i.cache.TTL(ctx, i.key)
+		ttl, err := i.counter.TTL(ctx, i.key)
 		if err != nil || ttl <= 0 {
 			ttl = time.Millisecond * 100
 		}
@@ -226,4 +226,36 @@ func (i *keyedDistributedLimiterInstance) WaitN(ctx context.Context, n int) erro
 		case <-time.After(ttl):
 		}
 	}
+}
+
+// cacheRateCounter 是 cache.Cache 到 RateCounter 的适配器.
+type cacheRateCounter struct {
+	cache cache.Cache
+}
+
+// CacheRateCounter 将 cache.Cache 适配为 RateCounter 接口.
+//
+// 示例:
+//
+//	redisCache, _ := cache.New(&cache.Config{Type: "redis", ...})
+//	counter := ratelimit.CacheRateCounter(redisCache)
+//	limiter, _ := ratelimit.NewDistributedLimiter(&ratelimit.DistributedConfig{
+//	    Counter: counter,
+//	    Limit:   100,
+//	    Window:  time.Minute,
+//	})
+func CacheRateCounter(c cache.Cache) RateCounter {
+	return &cacheRateCounter{cache: c}
+}
+
+func (c *cacheRateCounter) IncrementBy(ctx context.Context, key string, n int64) (int64, error) {
+	return c.cache.IncrementBy(ctx, key, n)
+}
+
+func (c *cacheRateCounter) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return c.cache.Expire(ctx, key, ttl)
+}
+
+func (c *cacheRateCounter) TTL(ctx context.Context, key string) (time.Duration, error) {
+	return c.cache.TTL(ctx, key)
 }

@@ -3,7 +3,6 @@ package jwt
 import (
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
@@ -20,7 +19,7 @@ type options struct {
 	refreshWindow   time.Duration
 	tokenPrefix     string
 	cacheKeyPrefix  string
-	cache           cache.Cache
+	store           TokenStore
 	logger          logger.Logger
 	whitelist       *Whitelist
 }
@@ -103,10 +102,14 @@ func WithCacheKeyPrefix(prefix string) Option {
 	}
 }
 
-// WithCache 设置缓存（用于令牌存储和撤销）.
-func WithCache(c cache.Cache) Option {
+// WithTokenStore 设置令牌存储（用于令牌存储和撤销）.
+//
+// 可以使用 CacheTokenStore 适配 cache.Cache:
+//
+//	jwt.WithTokenStore(jwt.CacheTokenStore(redisCache))
+func WithTokenStore(s TokenStore) Option {
 	return func(o *options) {
-		o.cache = c
+		o.store = s
 	}
 }
 

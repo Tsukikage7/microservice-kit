@@ -30,8 +30,48 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/Tsukikage7/microservice-kit/cache"
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
+
+// TokenStore 令牌存储接口.
+//
+// 这是 JWT 令牌缓存的最小依赖接口.
+// 可以用 cache.Cache、Redis 客户端或其他存储实现.
+type TokenStore interface {
+	// Get 获取令牌.
+	Get(ctx context.Context, key string) (string, error)
+
+	// Set 存储令牌.
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+}
+
+// cacheTokenStore 是 cache.Cache 到 TokenStore 的适配器.
+type cacheTokenStore struct {
+	cache cache.Cache
+}
+
+// CacheTokenStore 将 cache.Cache 适配为 TokenStore 接口.
+//
+// 示例:
+//
+//	redisCache, _ := cache.New(&cache.Config{Type: "redis", ...})
+//	j := jwt.NewJWT(
+//	    jwt.WithSecretKey("secret"),
+//	    jwt.WithTokenStore(jwt.CacheTokenStore(redisCache)),
+//	    jwt.WithLogger(log),
+//	)
+func CacheTokenStore(c cache.Cache) TokenStore {
+	return &cacheTokenStore{cache: c}
+}
+
+func (c *cacheTokenStore) Get(ctx context.Context, key string) (string, error) {
+	return c.cache.Get(ctx, key)
+}
+
+func (c *cacheTokenStore) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return c.cache.Set(ctx, key, value, ttl)
+}
 
 // JWT JWT 服务.
 type JWT struct {
@@ -73,14 +113,14 @@ func (j *JWT) Generate(claims Claims) (string, error) {
 	tokenString = j.opts.tokenPrefix + tokenString
 
 	// 存储到缓存
-	if j.opts.cache != nil {
+	if j.opts.store != nil {
 		subject, _ := claims.GetSubject()
 		exp, err := claims.GetExpirationTime()
 		if err == nil && exp != nil {
 			iat, _ := claims.GetIssuedAt()
 			key := j.buildCacheKey(subject, iat.Unix())
 			ttl := time.Until(exp.Time)
-			if err := j.opts.cache.Set(context.Background(), key, tokenString, ttl); err != nil {
+			if err := j.opts.store.Set(context.Background(), key, tokenString, ttl); err != nil {
 				j.opts.logger.With(
 					logger.String("name", j.opts.name),
 					logger.String("subject", subject),
@@ -147,7 +187,7 @@ func (j *JWT) ValidateWithClaims(tokenString string, claims jwt.Claims) (jwt.Cla
 	}
 
 	// 验证缓存中的令牌
-	if j.opts.cache != nil {
+	if j.opts.store != nil {
 		if err := j.validateCachedToken(tokenString, token.Claims); err != nil {
 			return nil, err
 		}
@@ -205,11 +245,11 @@ func (j *JWT) RefreshWithClaims(tokenString string, oldClaimsType jwt.Claims, ne
 
 // Revoke 撤销用户的所有令牌.
 func (j *JWT) Revoke(ctx context.Context, subject string) error {
-	if j.opts.cache == nil {
+	if j.opts.store == nil {
 		j.opts.logger.With(
 			logger.String("name", j.opts.name),
 			logger.String("subject", subject),
-		).Debug("[JWT] 未配置缓存，无需撤销令牌")
+		).Debug("[JWT] 未配置存储，无需撤销令牌")
 		return nil
 	}
 
@@ -279,7 +319,7 @@ func (j *JWT) validateCachedToken(tokenString string, claims jwt.Claims) error {
 	}
 
 	key := j.buildCacheKey(subject, iat.Unix())
-	storedToken, err := j.opts.cache.Get(context.Background(), key)
+	storedToken, err := j.opts.store.Get(context.Background(), key)
 	if err != nil {
 		j.opts.logger.With(
 			logger.String("name", j.opts.name),

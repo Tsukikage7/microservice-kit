@@ -3,8 +3,6 @@ package ratelimit
 import (
 	"fmt"
 	"time"
-
-	"github.com/Tsukikage7/microservice-kit/cache"
 )
 
 // 限流算法类型.
@@ -35,8 +33,8 @@ type Config struct {
 	// Prefix 分布式限流键前缀
 	Prefix string `mapstructure:"prefix" json:"prefix" yaml:"prefix"`
 
-	// Cache 缓存实例（分布式限流用）
-	Cache cache.Cache `mapstructure:"-" json:"-" yaml:"-"`
+	// Counter 计数器实例（分布式限流用）
+	Counter RateCounter `mapstructure:"-" json:"-" yaml:"-"`
 }
 
 // Validate 验证配置.
@@ -57,7 +55,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("%w: window 必须大于 0", ErrInvalidConfig)
 		}
 	case AlgorithmDistributed:
-		if c.Cache == nil {
+		if c.Counter == nil {
 			return ErrNilCache
 		}
 		if c.Limit <= 0 {
@@ -92,10 +90,10 @@ func NewLimiter(cfg *Config) (Limiter, error) {
 		return NewFixedWindow(cfg.Limit, cfg.Window), nil
 	case AlgorithmDistributed:
 		return NewDistributedLimiter(&DistributedConfig{
-			Cache:  cfg.Cache,
-			Prefix: cfg.Prefix,
-			Limit:  cfg.Limit,
-			Window: cfg.Window,
+			Counter: cfg.Counter,
+			Prefix:  cfg.Prefix,
+			Limit:   cfg.Limit,
+			Window:  cfg.Window,
 		})
 	default:
 		return nil, fmt.Errorf("%w: 不支持的算法类型 %s", ErrInvalidConfig, cfg.Algorithm)

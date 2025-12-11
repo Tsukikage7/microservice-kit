@@ -24,6 +24,21 @@ type Limiter interface {
 	WaitN(ctx context.Context, n int) error
 }
 
+// RateCounter 分布式限流器所需的计数器接口.
+//
+// 这是分布式限流的最小依赖接口.
+// 可以用 cache.Cache、Redis 客户端或其他存储实现.
+type RateCounter interface {
+	// IncrementBy 原子增加计数并返回新值.
+	IncrementBy(ctx context.Context, key string, n int64) (int64, error)
+
+	// Expire 设置键的过期时间.
+	Expire(ctx context.Context, key string, ttl time.Duration) error
+
+	// TTL 获取键的剩余过期时间.
+	TTL(ctx context.Context, key string) (time.Duration, error)
+}
+
 // TokenBucket 令牌桶限流器.
 //
 // 令牌以固定速率生成，请求需要消耗令牌才能通过.
