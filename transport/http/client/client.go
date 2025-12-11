@@ -59,7 +59,11 @@ func New(opts ...Option) (*Client, error) {
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", o.scheme, target)
-	o.logger.Infof("[%s] 客户端初始化成功 [service:%s] [baseURL:%s]", o.name, o.serviceName, baseURL)
+	o.logger.With(
+		logger.String("name", o.name),
+		logger.String("service", o.serviceName),
+		logger.String("baseURL", baseURL),
+	).Info("[HTTP] 客户端初始化成功")
 
 	return &Client{
 		httpClient: httpClient,

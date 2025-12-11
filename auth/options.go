@@ -1,7 +1,18 @@
 package auth
 
-import (
-	"github.com/Tsukikage7/microservice-kit/logger"
+import "github.com/Tsukikage7/microservice-kit/logger"
+
+// HTTP 相关常量.
+const (
+	AuthorizationHeader = "Authorization"
+	BearerPrefix        = "Bearer "
+	APIKeyHeader        = "X-API-Key"
+)
+
+// gRPC 相关常量.
+const (
+	GRPCAuthorizationMetadata = "authorization"
+	GRPCAPIKeyMetadata        = "x-api-key"
 )
 
 // options 中间件配置.
@@ -12,10 +23,6 @@ type options struct {
 	skipper              Skipper
 	errorHandler         ErrorHandler
 	logger               logger.Logger
-
-	// 授权参数
-	action   string
-	resource string
 }
 
 // Option 中间件配置选项.
@@ -43,8 +50,6 @@ func WithCredentialsExtractor(extractor CredentialsExtractor) Option {
 }
 
 // WithSkipper 设置跳过函数.
-//
-// 当函数返回 true 时，跳过认证/授权检查.
 func WithSkipper(skipper Skipper) Option {
 	return func(o *options) {
 		o.skipper = skipper
@@ -62,27 +67,5 @@ func WithErrorHandler(handler ErrorHandler) Option {
 func WithLogger(log logger.Logger) Option {
 	return func(o *options) {
 		o.logger = log
-	}
-}
-
-// WithActionResource 设置授权的操作和资源.
-func WithActionResource(action, resource string) Option {
-	return func(o *options) {
-		o.action = action
-		o.resource = resource
-	}
-}
-
-// WithAction 设置授权的操作.
-func WithAction(action string) Option {
-	return func(o *options) {
-		o.action = action
-	}
-}
-
-// WithResource 设置授权的资源.
-func WithResource(resource string) Option {
-	return func(o *options) {
-		o.resource = resource
 	}
 }

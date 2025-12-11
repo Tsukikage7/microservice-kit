@@ -17,15 +17,28 @@ type mockLogger struct {
 	errors []string
 }
 
-func newMockLogger() *mockLogger                                    { return &mockLogger{} }
-func (m *mockLogger) Debug(args ...any)                             {}
-func (m *mockLogger) Debugf(format string, args ...any)             {}
-func (m *mockLogger) Info(args ...any)                              {}
-func (m *mockLogger) Infof(format string, args ...any)              { m.infos = append(m.infos, format) }
-func (m *mockLogger) Warn(args ...any)                              {}
-func (m *mockLogger) Warnf(format string, args ...any)              { m.warns = append(m.warns, format) }
-func (m *mockLogger) Error(args ...any)                             {}
-func (m *mockLogger) Errorf(format string, args ...any)             { m.errors = append(m.errors, format) }
+func newMockLogger() *mockLogger { return &mockLogger{} }
+func (m *mockLogger) Debug(args ...any) {
+}
+func (m *mockLogger) Debugf(format string, args ...any) {}
+func (m *mockLogger) Info(args ...any) {
+	if len(args) > 0 {
+		m.infos = append(m.infos, args[0].(string))
+	}
+}
+func (m *mockLogger) Infof(format string, args ...any) { m.infos = append(m.infos, format) }
+func (m *mockLogger) Warn(args ...any) {
+	if len(args) > 0 {
+		m.warns = append(m.warns, args[0].(string))
+	}
+}
+func (m *mockLogger) Warnf(format string, args ...any) { m.warns = append(m.warns, format) }
+func (m *mockLogger) Error(args ...any) {
+	if len(args) > 0 {
+		m.errors = append(m.errors, args[0].(string))
+	}
+}
+func (m *mockLogger) Errorf(format string, args ...any) { m.errors = append(m.errors, format) }
 func (m *mockLogger) Fatal(args ...any)                             {}
 func (m *mockLogger) Fatalf(format string, args ...any)             {}
 func (m *mockLogger) Panic(args ...any)                             {}

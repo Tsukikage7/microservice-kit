@@ -51,7 +51,7 @@ func NewMemoryCache(config *Config, log logger.Logger) (Cache, error) {
 	// 启动清理协程
 	go c.cleanupLoop()
 
-	log.Debug("[cache] memory cache initialized")
+	log.Debug("[cache] 内存缓存初始化完成")
 
 	return c, nil
 }
@@ -344,7 +344,7 @@ func (m *memoryCache) Ping(ctx context.Context) error {
 // Close 关闭缓存.
 func (m *memoryCache) Close() error {
 	close(m.closeCh)
-	m.logger.Debug("[cache] memory cache closed")
+	m.logger.Debug("[cache] 内存缓存已关闭")
 	return nil
 }
 

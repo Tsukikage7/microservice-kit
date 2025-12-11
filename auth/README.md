@@ -1,75 +1,25 @@
-# Auth 认证授权包
+# Auth
 
-提供统一的认证授权框架，支持多种认证方式和授权策略。
+统一的认证授权框架，提供 HTTP/gRPC/Endpoint 中间件。
 
-## 特性
+## 结构
 
-- 可扩展的认证器接口，支持 JWT、API Key 等多种认证方式
-- 可扩展的授权器接口，支持 RBAC 等授权策略
-- 链式认证器，支持多种认证方式组合
-- 带缓存的认证器，提升性能
-- HTTP/gRPC/Endpoint 中间件
-- Context 操作便捷函数
-
-## 安装
-
-```go
-import "github.com/Tsukikage7/microservice-kit/auth"
+```
+auth/
+├── auth.go        # 核心类型 (Principal, Credentials, 接口定义)
+├── errors.go      # 错误定义
+├── context.go     # Context 操作
+├── authorizer.go  # Authorizer 实现 (RoleAuthorizer, PermissionAuthorizer)
+├── options.go     # 中间件配置选项
+├── middleware.go  # Endpoint 中间件
+├── http.go        # HTTP 中间件
+├── grpc.go        # gRPC 拦截器
+└── jwt/           # JWT 认证（可独立使用）
 ```
 
-## 核心概念
+## 快速开始
 
-### Principal (身份主体)
-
-表示已认证的用户或服务：
-
-```go
-type Principal struct {
-    ID          string            // 唯一标识
-    Type        string            // 类型: user, service, api_key
-    Name        string            // 名称
-    Roles       []string          // 角色列表
-    Permissions []string          // 权限列表
-    Metadata    map[string]any    // 扩展元数据
-    ExpiresAt   *time.Time        // 过期时间
-}
-```
-
-### Credentials (凭据)
-
-认证凭据：
-
-```go
-type Credentials struct {
-    Type  string            // bearer, api_key, basic
-    Token string            // 凭据令牌
-    Extra map[string]string // 额外信息
-}
-```
-
-### Authenticator (认证器)
-
-验证凭据并返回身份主体：
-
-```go
-type Authenticator interface {
-    Authenticate(ctx context.Context, creds Credentials) (*Principal, error)
-}
-```
-
-### Authorizer (授权器)
-
-检查主体是否有权限执行操作：
-
-```go
-type Authorizer interface {
-    Authorize(ctx context.Context, principal *Principal, action string, resource string) error
-}
-```
-
-## 使用示例
-
-### 1. 基础 JWT 认证
+### 使用 JWT 认证
 
 ```go
 import (
@@ -77,100 +27,27 @@ import (
     "github.com/Tsukikage7/microservice-kit/auth/jwt"
 )
 
-// 创建 JWT 服务并获取认证器
-jwtService := jwt.NewJWT(
-    jwt.WithSecretKey("your-secret-key"),
+// 1. 创建 JWT 服务和认证器
+jwtSrv := jwt.NewJWT(
+    jwt.WithSecretKey("your-secret"),
     jwt.WithLogger(log),
 )
-authenticator := jwt.NewAuthenticator(jwtService)
+authenticator := jwt.NewAuthenticator(jwtSrv)
 
-// 应用到 Endpoint
-endpoint = auth.Middleware(authenticator)(endpoint)
-
-// 应用到 HTTP
+// 2. 应用中间件
+// HTTP
 handler = auth.HTTPMiddleware(authenticator)(handler)
 
-// 应用到 gRPC
+// gRPC
 srv := grpc.NewServer(
-    grpc.ChainUnaryInterceptor(
-        auth.UnaryServerInterceptor(authenticator),
-    ),
-)
-```
-
-### 2. API Key 认证
-
-```go
-import (
-    "github.com/Tsukikage7/microservice-kit/auth"
-    "github.com/Tsukikage7/microservice-kit/auth/apikey"
+    grpc.UnaryInterceptor(auth.UnaryServerInterceptor(authenticator)),
 )
 
-// 创建 API Key 存储
-store := apikey.NewMemoryStore()
-store.Register("sk_live_xxx", &auth.Principal{
-    ID:   "service-1",
-    Type: auth.PrincipalTypeService,
-    Roles: []string{"service"},
-})
-
-// 创建认证器
-authenticator := apikey.NewAuthenticator(store)
-
-// 使用哈希存储（更安全）
-hashedKey := apikey.HashKey("sk_live_xxx")
-store.Register(hashedKey, principal)
-authenticator := apikey.NewAuthenticator(store, apikey.WithHashKeys(true))
+// Endpoint
+endpoint = auth.Middleware(authenticator)(endpoint)
 ```
 
-### 3. 链式认证（JWT 或 API Key）
-
-```go
-chainAuth := auth.NewChainAuthenticator(
-    jwt.NewAuthenticator(jwtService),
-    apikey.NewAuthenticator(apiKeyStore),
-)
-
-handler = auth.HTTPMiddleware(chainAuth)(handler)
-```
-
-### 4. RBAC 授权
-
-```go
-import "github.com/Tsukikage7/microservice-kit/auth/rbac"
-
-// 定义角色和权限
-rbacAuth := rbac.New().
-    AddRole(&rbac.Role{
-        Name: "admin",
-        Permissions: []rbac.Permission{
-            {Action: "*", Resource: "*"},
-        },
-    }).
-    AddRole(&rbac.Role{
-        Name: "user",
-        Permissions: []rbac.Permission{
-            {Action: "read", Resource: "orders"},
-            {Action: "create", Resource: "orders"},
-        },
-    }).
-    AddRole(&rbac.Role{
-        Name: "manager",
-        Parents: []string{"user"}, // 继承 user 角色
-        Permissions: []rbac.Permission{
-            {Action: "update", Resource: "orders"},
-            {Action: "delete", Resource: "orders"},
-        },
-    })
-
-// 应用认证 + 授权
-endpoint = auth.Middleware(authenticator,
-    auth.WithAuthorizer(rbacAuth),
-    auth.WithActionResource("read", "orders"),
-)(endpoint)
-```
-
-### 5. 在业务逻辑中使用
+### 在业务逻辑中使用
 
 ```go
 func CreateOrder(ctx context.Context, req *CreateOrderRequest) error {
@@ -180,123 +57,114 @@ func CreateOrder(ctx context.Context, req *CreateOrderRequest) error {
         return auth.ErrUnauthenticated
     }
 
-    // 检查权限
-    if !auth.HasPermission(ctx, "orders:create") {
-        return auth.ErrForbidden
-    }
+    // 使用用户信息
+    order.UserID = principal.ID
 
     // 检查角色
-    if !auth.HasRole(ctx, "user") {
+    if !principal.HasRole("admin") {
         return auth.ErrForbidden
     }
-
-    // 使用用户 ID
-    order.UserID = principal.ID
-    order.CreatedBy = principal.Name
 
     return nil
 }
 ```
 
-### 6. 跳过某些路径
+## 配置选项
 
 ```go
-// HTTP 跳过健康检查
-handler = auth.HTTPMiddleware(authenticator,
-    auth.WithSkipper(auth.HTTPSkipPaths("/health", "/ready", "/metrics")),
-)(handler)
+auth.HTTPMiddleware(authenticator,
+    // 设置日志
+    auth.WithLogger(log),
 
-// gRPC 跳过某些方法
-srv := grpc.NewServer(
-    grpc.ChainUnaryInterceptor(
-        auth.UnaryServerInterceptor(authenticator,
-            auth.WithSkipper(auth.GRPCSkipMethods(
-                "/grpc.health.v1.Health/Check",
-            )),
-        ),
-    ),
+    // 设置授权器（角色检查）
+    auth.WithAuthorizer(auth.NewRoleAuthorizer([]string{"admin"})),
+
+    // 跳过某些路径
+    auth.WithSkipper(auth.HTTPSkipPaths("/health", "/ready")),
+
+    // 自定义凭据提取
+    auth.WithCredentialsExtractor(auth.BearerExtractor),
+
+    // 自定义错误处理
+    auth.WithErrorHandler(func(ctx context.Context, err error) error {
+        return customError(err)
+    }),
 )
 ```
 
-### 7. 自定义凭据提取
+## 授权器
+
+### 角色授权
 
 ```go
-// HTTP: 从自定义 header 提取
-handler = auth.HTTPMiddleware(authenticator,
-    auth.WithCredentialsExtractor(auth.APIKeyExtractor("X-Custom-Key")),
-)(handler)
+// 需要任一角色
+authorizer := auth.NewRoleAuthorizer([]string{"admin", "editor"})
 
-// gRPC: 从自定义 metadata 提取
-auth.UnaryServerInterceptor(authenticator,
-    auth.WithCredentialsExtractor(auth.GRPCAPIKeyExtractor("x-custom-key")),
-)
+// 需要所有角色
+authorizer := auth.NewRoleAuthorizer([]string{"admin", "editor"}, true)
 ```
 
-## 内置认证器
-
-| 认证器 | 说明 |
-|-------|------|
-| `jwt.Authenticator` | JWT 认证，整合 jwt 包 |
-| `apikey.Authenticator` | API Key 认证 |
-| `auth.ChainAuthenticator` | 链式认证，按顺序尝试 |
-| `auth.CachingAuthenticator` | 带缓存的认证器 |
-| `auth.MemoryAuthenticator` | 内存认证器，用于测试 |
-| `auth.FuncAuthenticator` | 函数式认证器 |
-
-## 内置授权器
-
-| 授权器 | 说明 |
-|-------|------|
-| `rbac.RBAC` | 基于角色的访问控制 |
-| `auth.RoleAuthorizer` | 简单角色检查 |
-| `auth.PermissionAuthorizer` | 简单权限检查 |
-| `auth.ChainAuthorizer` | 链式授权，全部通过 |
-| `auth.AllowAllAuthorizer` | 允许所有（测试用） |
-| `auth.DenyAllAuthorizer` | 拒绝所有（测试用） |
-| `auth.FuncAuthorizer` | 函数式授权器 |
-
-## 中间件选项
-
-| 选项 | 说明 |
-|-----|------|
-| `WithAuthorizer` | 设置授权器 |
-| `WithCredentialsExtractor` | 自定义凭据提取 |
-| `WithSkipper` | 设置跳过条件 |
-| `WithErrorHandler` | 自定义错误处理 |
-| `WithLogger` | 设置日志记录器 |
-| `WithActionResource` | 设置授权的操作和资源 |
-
-## 错误类型
-
-| 错误 | 说明 |
-|-----|------|
-| `ErrUnauthenticated` | 未认证 |
-| `ErrForbidden` | 无权限 |
-| `ErrInvalidCredentials` | 无效凭据 |
-| `ErrCredentialsExpired` | 凭据已过期 |
-| `ErrCredentialsNotFound` | 凭据未找到 |
-
-## Context 便捷函数
+### 权限授权
 
 ```go
-// 获取主体
+// 需要任一权限
+authorizer := auth.NewPermissionAuthorizer([]string{"read:orders", "write:orders"})
+
+// 需要所有权限
+authorizer := auth.NewPermissionAuthorizer([]string{"read:orders", "write:orders"}, true)
+```
+
+### 便捷函数
+
+```go
+// 需要指定角色
+endpoint = auth.RequireRoles(authenticator, []string{"admin"})(endpoint)
+
+// 需要指定权限
+endpoint = auth.RequirePermissions(authenticator, []string{"read:orders"})(endpoint)
+```
+
+## 上下文操作
+
+```go
+// 获取身份主体
 principal, ok := auth.FromContext(ctx)
-principal := auth.MustFromContext(ctx) // 不存在则 panic
 
-// 检查角色/权限
-auth.HasRole(ctx, "admin")
-auth.HasAnyRole(ctx, "admin", "manager")
-auth.HasAllRoles(ctx, "user", "verified")
-auth.HasPermission(ctx, "orders:create")
+// 获取身份主体（不存在则 panic）
+principal := auth.MustFromContext(ctx)
 
-// 获取 ID
+// 检查角色
+if auth.HasRole(ctx, "admin") { ... }
+
+// 检查权限
+if auth.HasPermission(ctx, "read:orders") { ... }
+
+// 获取用户 ID
 id, ok := auth.GetPrincipalID(ctx)
 ```
 
-## 最佳实践
+## 错误处理
 
-1. **使用 RBAC 管理权限** - 比直接检查权限更易维护
-2. **启用凭据哈希** - API Key 使用 `WithHashKeys(true)`
-3. **缓存认证结果** - 使用 `CachingAuthenticator` 提升性能
-4. **跳过公开端点** - 配置 Skipper 跳过不需要认证的路径
-5. **记录日志** - 配置 Logger 便于调试和审计
+```go
+var (
+    auth.ErrUnauthenticated    // 未认证
+    auth.ErrForbidden          // 无权限
+    auth.ErrInvalidCredentials // 无效凭据
+    auth.ErrCredentialsExpired // 凭据已过期
+    auth.ErrCredentialsNotFound // 凭据未找到
+)
+
+// 错误检查
+if auth.IsUnauthenticated(err) { ... }
+if auth.IsForbidden(err) { ... }
+```
+
+## JWT 子包
+
+JWT 子包可以独立使用，详见 [jwt/README.md](jwt/README.md)。
+
+```go
+// 直接使用 JWT（不通过 auth 包）
+j := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+handler = jwt.HTTPMiddleware(j)(handler)
+```

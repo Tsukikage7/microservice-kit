@@ -1,0 +1,71 @@
+// Copyright 2024 microservice-kit Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+
+syntax = "proto3";
+
+package microservice.kit.auth;
+
+option go_package = "github.com/Tsukikage7/microservice-kit/auth/proto;authpb";
+
+import "google/protobuf/descriptor.proto";
+
+// MethodAuthOptions 方法级别的认证选项.
+//
+// 使用示例:
+//
+//   import "github.com/Tsukikage7/microservice-kit/auth/proto/auth.proto";
+//
+//   service AuthService {
+//     rpc Login(LoginRequest) returns (LoginResponse) {
+//       option (microservice.kit.auth.method) = {
+//         public: true
+//       };
+//     }
+//
+//     rpc GetProfile(GetProfileRequest) returns (GetProfileResponse) {
+//       option (microservice.kit.auth.method) = {
+//         permissions: ["user:read"]
+//       };
+//     }
+//   }
+message MethodAuthOptions {
+  // public 标记该方法为公开接口，无需认证.
+  bool public = 1;
+
+  // permissions 该方法需要的权限列表.
+  // 用户必须拥有列表中的至少一个权限才能访问（OR 逻辑）.
+  repeated string permissions = 2;
+
+  // all_permissions 是否需要拥有所有权限.
+  // 默认 false（OR 逻辑），设为 true 时需要拥有所有权限（AND 逻辑）.
+  bool all_permissions = 3;
+}
+
+// ServiceAuthOptions 服务级别的认证选项.
+//
+// 使用示例:
+//
+//   service PublicService {
+//     option (microservice.kit.auth.service) = {
+//       public: true  // 该服务下所有方法都是公开的
+//     };
+//   }
+message ServiceAuthOptions {
+  // public 标记该服务下所有方法为公开接口.
+  bool public = 1;
+
+  // default_permissions 服务下所有方法的默认权限要求.
+  repeated string default_permissions = 2;
+}
+
+// 方法级别认证选项扩展.
+extend google.protobuf.MethodOptions {
+  MethodAuthOptions method = 50001;
+}
+
+// 服务级别认证选项扩展.
+extend google.protobuf.ServiceOptions {
+  ServiceAuthOptions service = 50002;
+}

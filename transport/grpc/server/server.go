@@ -5,12 +5,15 @@ import (
 	"context"
 	"net"
 
-	"github.com/Tsukikage7/microservice-kit/recovery"
-	"github.com/Tsukikage7/microservice-kit/transport"
-	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
+
+	"github.com/Tsukikage7/microservice-kit/auth"
+	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/recovery"
+	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
 
 // Registrar gRPC 服务注册器接口.
@@ -104,12 +107,20 @@ func (s *Server) Start(ctx context.Context) error {
 	s.healthServer = health.NewGRPCServer(s.health)
 	s.healthServer.Register(s.server)
 
+	// 如果启用自动发现，扫描注册的服务并填充 discoveredMethods
+	if s.opts.enableAutoDiscovery && s.opts.discoveredMethods != nil {
+		s.discoverPublicMethods()
+	}
+
 	// 启用反射
 	if s.opts.enableReflection {
 		reflection.Register(s.server)
 	}
 
-	s.opts.logger.Infof("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
+	s.opts.logger.With(
+		logger.String("name", s.opts.name),
+		logger.String("addr", s.opts.addr),
+	).Info("[gRPC] 服务器启动")
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -134,7 +145,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	s.opts.logger.Infof("[%s] 服务器停止中", s.opts.name)
+	s.opts.logger.With(logger.String("name", s.opts.name)).Info("[gRPC] 服务器停止中")
 
 	// 优雅关闭
 	done := make(chan struct{})
@@ -182,6 +193,19 @@ func (s *Server) buildServerOptions() []grpc.ServerOption {
 	unaryInterceptors := s.opts.unaryInterceptors
 	streamInterceptors := s.opts.streamInterceptors
 
+	// 如果启用认证，添加 auth 拦截器
+	if s.opts.authenticator != nil {
+		authOpts := s.buildAuthOptions()
+		unaryInterceptors = append(
+			unaryInterceptors,
+			auth.UnaryServerInterceptor(s.opts.authenticator, authOpts...),
+		)
+		streamInterceptors = append(
+			streamInterceptors,
+			auth.StreamServerInterceptor(s.opts.authenticator, authOpts...),
+		)
+	}
+
 	// 如果启用 panic 恢复，将 recovery 拦截器添加到最前面（最外层）
 	if s.opts.enableRecovery {
 		unaryInterceptors = append(
@@ -207,6 +231,50 @@ func (s *Server) buildServerOptions() []grpc.ServerOption {
 	opts = append(opts, s.opts.serverOptions...)
 
 	return opts
+}
+
+// buildAuthOptions 构建 auth 选项.
+func (s *Server) buildAuthOptions() []auth.Option {
+	var authOpts []auth.Option
+
+	// 添加 logger
+	if s.opts.logger != nil {
+		authOpts = append(authOpts, auth.WithLogger(s.opts.logger))
+	}
+
+	// 添加用户配置的选项
+	authOpts = append(authOpts, s.opts.authOptions...)
+
+	// 构建 skipper
+	if len(s.opts.publicMethods) > 0 {
+		authOpts = append(authOpts, auth.WithSkipper(buildMethodSkipper(s.opts.publicMethods)))
+	}
+
+	return authOpts
+}
+
+// discoverPublicMethods 从注册的服务中发现公开方法.
+func (s *Server) discoverPublicMethods() {
+	result := auth.DiscoverFromServer(s.server)
+
+	// 填充 discoveredMethods map
+	for _, method := range result.PublicMethods {
+		s.opts.discoveredMethods[method] = true
+	}
+
+	if len(result.PublicMethods) > 0 {
+		s.opts.logger.With(
+			logger.String("name", s.opts.name),
+			logger.Int("count", len(result.PublicMethods)),
+		).Info("[gRPC] 自动发现公开方法")
+
+		for _, method := range result.PublicMethods {
+			s.opts.logger.With(
+				logger.String("name", s.opts.name),
+				logger.String("method", method),
+			).Debug("[gRPC] 发现公开方法")
+		}
+	}
 }
 
 // 确保 Server 实现了 transport.HealthCheckable 接口.

@@ -42,6 +42,7 @@ type HTTPConfig struct {
 	ReadTimeout  time.Duration `json:"read_timeout" toml:"read_timeout" yaml:"read_timeout" mapstructure:"read_timeout"`
 	WriteTimeout time.Duration `json:"write_timeout" toml:"write_timeout" yaml:"write_timeout" mapstructure:"write_timeout"`
 	IdleTimeout  time.Duration `json:"idle_timeout" toml:"idle_timeout" yaml:"idle_timeout" mapstructure:"idle_timeout"`
+	PublicPaths  []string      `json:"public_paths" toml:"public_paths" yaml:"public_paths" mapstructure:"public_paths"`
 }
 
 // GRPCConfig gRPC 服务器配置.
@@ -51,6 +52,16 @@ type GRPCConfig struct {
 	EnableReflection bool          `json:"enable_reflection" toml:"enable_reflection" yaml:"enable_reflection" mapstructure:"enable_reflection"`
 	KeepaliveTime    time.Duration `json:"keepalive_time" toml:"keepalive_time" yaml:"keepalive_time" mapstructure:"keepalive_time"`
 	KeepaliveTimeout time.Duration `json:"keepalive_timeout" toml:"keepalive_timeout" yaml:"keepalive_timeout" mapstructure:"keepalive_timeout"`
+	PublicMethods    []string      `json:"public_methods" toml:"public_methods" yaml:"public_methods" mapstructure:"public_methods"`
+}
+
+// GatewayConfig Gateway 服务器配置.
+type GatewayConfig struct {
+	Name          string        `json:"name" toml:"name" yaml:"name" mapstructure:"name"`
+	GRPCAddr      string        `json:"grpc_addr" toml:"grpc_addr" yaml:"grpc_addr" mapstructure:"grpc_addr"`
+	HTTPAddr      string        `json:"http_addr" toml:"http_addr" yaml:"http_addr" mapstructure:"http_addr"`
+	PublicMethods []string      `json:"public_methods" toml:"public_methods" yaml:"public_methods" mapstructure:"public_methods"`
+	KeepaliveTime time.Duration `json:"keepalive_time" toml:"keepalive_time" yaml:"keepalive_time" mapstructure:"keepalive_time"`
 }
 
 // AppOption App 配置选项.
@@ -197,7 +208,10 @@ func (a *Application) Run() error {
 		return err
 	}
 
-	a.opts.logger.Infof("[%s] 应用启动中 [version:%s]", a.opts.name, a.opts.version)
+	a.opts.logger.With(
+		logger.String("name", a.opts.name),
+		logger.String("version", a.opts.version),
+	).Info("[App] 应用启动中")
 
 	// 启动所有服务器
 	if err := a.start(); err != nil {
@@ -206,7 +220,10 @@ func (a *Application) Run() error {
 
 	// 执行启动后钩子
 	if err := a.opts.hooks.runAfterStart(a.ctx); err != nil {
-		a.opts.logger.Errorf("[%s] 启动后钩子执行失败 [error:%v]", a.opts.name, err)
+		a.opts.logger.With(
+			logger.String("name", a.opts.name),
+			logger.Err(err),
+		).Error("[App] 启动后钩子执行失败")
 	}
 
 	// 等待关闭信号
@@ -236,7 +253,7 @@ func (a *Application) Version() string {
 // start 启动所有服务器.
 func (a *Application) start() error {
 	if len(a.servers) == 0 {
-		a.opts.logger.Warnf("[%s] 没有注册任何服务器", a.opts.name)
+		a.opts.logger.With(logger.String("name", a.opts.name)).Warn("[App] 没有注册任何服务器")
 		return nil
 	}
 
@@ -247,7 +264,11 @@ func (a *Application) start() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.opts.logger.Infof("[%s] 启动服务器 [name:%s] [addr:%s]", a.opts.name, s.Name(), s.Addr())
+			a.opts.logger.With(
+				logger.String("app", a.opts.name),
+				logger.String("server", s.Name()),
+				logger.String("addr", s.Addr()),
+			).Info("[App] 启动服务器")
 			if err := s.Start(a.ctx); err != nil {
 				errCh <- err
 			}
@@ -276,9 +297,12 @@ func (a *Application) waitForShutdown() error {
 
 	select {
 	case sig := <-sigCh:
-		a.opts.logger.Infof("[%s] 收到信号 [signal:%s]", a.opts.name, sig.String())
+		a.opts.logger.With(
+			logger.String("name", a.opts.name),
+			logger.String("signal", sig.String()),
+		).Info("[App] 收到信号")
 	case <-a.ctx.Done():
-		a.opts.logger.Infof("[%s] 上下文已取消", a.opts.name)
+		a.opts.logger.With(logger.String("name", a.opts.name)).Info("[App] 上下文已取消")
 	}
 
 	return a.shutdown()
@@ -286,14 +310,20 @@ func (a *Application) waitForShutdown() error {
 
 // shutdown 优雅关闭.
 func (a *Application) shutdown() error {
-	a.opts.logger.Infof("[%s] 开始优雅关闭 [timeout:%v]", a.opts.name, a.opts.gracefulTimeout)
+	a.opts.logger.With(
+		logger.String("name", a.opts.name),
+		logger.Duration("timeout", a.opts.gracefulTimeout),
+	).Info("[App] 开始优雅关闭")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.opts.gracefulTimeout)
 	defer cancel()
 
 	// 执行停止前钩子
 	if err := a.opts.hooks.runBeforeStop(shutdownCtx); err != nil {
-		a.opts.logger.Errorf("[%s] 停止前钩子执行失败 [error:%v]", a.opts.name, err)
+		a.opts.logger.With(
+			logger.String("name", a.opts.name),
+			logger.Err(err),
+		).Error("[App] 停止前钩子执行失败")
 	}
 
 	// 停止所有服务器
@@ -302,9 +332,16 @@ func (a *Application) shutdown() error {
 		wg.Add(1)
 		go func(s Server) {
 			defer wg.Done()
-			a.opts.logger.Infof("[%s] 停止服务器 [name:%s]", a.opts.name, s.Name())
+			a.opts.logger.With(
+				logger.String("app", a.opts.name),
+				logger.String("server", s.Name()),
+			).Info("[App] 停止服务器")
 			if err := s.Stop(shutdownCtx); err != nil {
-				a.opts.logger.Errorf("[%s] 服务器停止失败 [name:%s] [error:%v]", a.opts.name, s.Name(), err)
+				a.opts.logger.With(
+					logger.String("app", a.opts.name),
+					logger.String("server", s.Name()),
+					logger.Err(err),
+				).Error("[App] 服务器停止失败")
 			}
 		}(srv)
 	}
@@ -318,20 +355,23 @@ func (a *Application) shutdown() error {
 
 	select {
 	case <-done:
-		a.opts.logger.Infof("[%s] 所有服务器已停止", a.opts.name)
+		a.opts.logger.With(logger.String("name", a.opts.name)).Info("[App] 所有服务器已停止")
 	case <-shutdownCtx.Done():
-		a.opts.logger.Warnf("[%s] 关闭超时，强制退出", a.opts.name)
+		a.opts.logger.With(logger.String("name", a.opts.name)).Warn("[App] 关闭超时，强制退出")
 	}
 
 	// 执行停止后钩子
 	if err := a.opts.hooks.runAfterStop(context.Background()); err != nil {
-		a.opts.logger.Errorf("[%s] 停止后钩子执行失败 [error:%v]", a.opts.name, err)
+		a.opts.logger.With(
+			logger.String("name", a.opts.name),
+			logger.Err(err),
+		).Error("[App] 停止后钩子执行失败")
 	}
 
 	a.mu.Lock()
 	a.running = false
 	a.mu.Unlock()
 
-	a.opts.logger.Infof("[%s] 应用已关闭", a.opts.name)
+	a.opts.logger.With(logger.String("name", a.opts.name)).Info("[App] 应用已关闭")
 	return nil
 }

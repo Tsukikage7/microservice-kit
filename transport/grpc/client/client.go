@@ -9,6 +9,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+
+	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
 // Client gRPC 客户端封装.
@@ -71,7 +73,11 @@ func New(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
-	o.logger.Infof("[%s] 客户端初始化成功 [service:%s] [target:%s]", o.name, o.serviceName, target)
+	o.logger.With(
+		logger.String("name", o.name),
+		logger.String("service", o.serviceName),
+		logger.String("target", target),
+	).Info("[gRPC] 客户端初始化成功")
 
 	return &Client{
 		conn: conn,
@@ -87,7 +93,10 @@ func (c *Client) Conn() *grpc.ClientConn {
 // Close 关闭连接.
 func (c *Client) Close() error {
 	if c.conn != nil {
-		c.opts.logger.Infof("[%s] 关闭连接 [service:%s]", c.opts.name, c.opts.serviceName)
+		c.opts.logger.With(
+			logger.String("name", c.opts.name),
+			logger.String("service", c.opts.serviceName),
+		).Info("[gRPC] 关闭连接")
 		return c.conn.Close()
 	}
 	return nil

@@ -6,10 +6,7 @@ import "context"
 type contextKey string
 
 const (
-	// principalContextKey Principal 上下文键.
-	principalContextKey contextKey = "auth:principal"
-
-	// credentialsContextKey Credentials 上下文键.
+	principalContextKey   contextKey = "auth:principal"
 	credentialsContextKey contextKey = "auth:credentials"
 )
 
@@ -62,24 +59,6 @@ func HasPermission(ctx context.Context, permission string) bool {
 	return principal.HasPermission(permission)
 }
 
-// HasAnyRole 检查当前 context 中的主体是否有任一指定角色.
-func HasAnyRole(ctx context.Context, roles ...string) bool {
-	principal, ok := FromContext(ctx)
-	if !ok {
-		return false
-	}
-	return principal.HasAnyRole(roles...)
-}
-
-// HasAllRoles 检查当前 context 中的主体是否有所有指定角色.
-func HasAllRoles(ctx context.Context, roles ...string) bool {
-	principal, ok := FromContext(ctx)
-	if !ok {
-		return false
-	}
-	return principal.HasAllRoles(roles...)
-}
-
 // GetPrincipalID 获取当前 context 中主体的 ID.
 func GetPrincipalID(ctx context.Context) (string, bool) {
 	principal, ok := FromContext(ctx)
@@ -87,13 +66,4 @@ func GetPrincipalID(ctx context.Context) (string, bool) {
 		return "", false
 	}
 	return principal.ID, true
-}
-
-// GetPrincipalType 获取当前 context 中主体的类型.
-func GetPrincipalType(ctx context.Context) (string, bool) {
-	principal, ok := FromContext(ctx)
-	if !ok {
-		return "", false
-	}
-	return principal.Type, true
 }

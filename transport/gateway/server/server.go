@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/Tsukikage7/microservice-kit/auth"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
@@ -61,6 +62,9 @@ func New(opts ...Option) *Server {
 
 	// 应用 recovery 拦截器（必须在所有 option 处理之后）
 	applyRecoveryInterceptors(o)
+
+	// 应用 auth 拦截器
+	applyAuthInterceptors(o)
 
 	muxOpts := []runtime.ServeMuxOption{
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
@@ -246,6 +250,11 @@ func (s *Server) startGRPC() error {
 	s.healthServer = health.NewGRPCServer(s.health)
 	s.healthServer.Register(s.grpcServer)
 
+	// 如果启用自动发现，扫描注册的服务并填充 discoveredMethods
+	if s.opts.enableAutoDiscovery && s.opts.discoveredMethods != nil {
+		s.discoverPublicMethods()
+	}
+
 	if s.opts.enableReflection {
 		reflection.Register(s.grpcServer)
 	}
@@ -257,6 +266,29 @@ func (s *Server) startGRPC() error {
 
 	go s.grpcServer.Serve(lis)
 	return nil
+}
+
+// discoverPublicMethods 从注册的服务中发现公开方法.
+func (s *Server) discoverPublicMethods() {
+	result := auth.DiscoverFromServer(s.grpcServer)
+
+	// 填充 discoveredMethods map
+	for _, method := range result.PublicMethods {
+		s.opts.discoveredMethods[method] = true
+	}
+
+	if len(result.PublicMethods) > 0 {
+		s.opts.logger.With(
+			logger.String("name", s.opts.name),
+			logger.Int("count", len(result.PublicMethods)),
+		).Info("[Gateway] 自动发现公开方法")
+
+		for _, method := range result.PublicMethods {
+			s.opts.logger.With(
+				logger.String("method", method),
+			).Debug("[Gateway] 发现公开方法")
+		}
+	}
 }
 
 func (s *Server) connectGateway() error {

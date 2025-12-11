@@ -31,22 +31,22 @@ func WithClaimsMapper(mapper ClaimsMapper) AuthenticatorOption {
 //
 // 示例:
 //
-//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
-//	authenticator := jwt.NewAuthenticator(jwtService)
+//	jwtSrv := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
+//	authenticator := jwt.NewAuthenticator(jwtSrv)
 //
 //	// 使用自定义 claims 映射
-//	authenticator := jwt.NewAuthenticator(jwtService,
+//	authenticator := jwt.NewAuthenticator(jwtSrv,
 //	    jwt.WithClaimsMapper(func(claims jwt.Claims) (*auth.Principal, error) {
 //	        // 自定义映射逻辑
 //	    }),
 //	)
-func NewAuthenticator(jwtService *JWT, opts ...AuthenticatorOption) *Authenticator {
-	if jwtService == nil {
+func NewAuthenticator(jwtSrv *JWT, opts ...AuthenticatorOption) *Authenticator {
+	if jwtSrv == nil {
 		panic("jwt: JWT服务不能为空")
 	}
 
 	a := &Authenticator{
-		jwt:          jwtService,
+		jwt:          jwtSrv,
 		claimsMapper: defaultClaimsMapper,
 	}
 
@@ -76,7 +76,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, creds auth.Credentials
 	// 映射为 Principal
 	principal, err := a.claimsMapper(claims)
 	if err != nil {
-		return nil, auth.ErrInvalidPrincipal
+		return nil, auth.ErrInvalidCredentials
 	}
 
 	// 检查过期
@@ -149,7 +149,7 @@ func defaultClaimsMapper(claims gojwt.Claims) (*auth.Principal, error) {
 	}
 
 	if principal.ID == "" {
-		return nil, auth.ErrInvalidPrincipal
+		return nil, auth.ErrInvalidCredentials
 	}
 
 	return principal, nil

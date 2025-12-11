@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Tsukikage7/microservice-kit/auth"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
@@ -42,6 +43,12 @@ func New(handler http.Handler, opts ...Option) *Server {
 	// 使用健康检查中间件包装 handler
 	wrappedHandler := health.Middleware(h)(handler)
 
+	// 如果启用认证，使用 auth 中间件包装
+	if o.authenticator != nil {
+		authOpts := buildAuthOptions(o)
+		wrappedHandler = auth.HTTPMiddleware(o.authenticator, authOpts...)(wrappedHandler)
+	}
+
 	// 如果启用链路追踪，使用 trace 中间件包装
 	if o.tracerName != "" {
 		wrappedHandler = tracing.HTTPMiddleware(o.tracerName)(wrappedHandler)
@@ -69,7 +76,10 @@ func (s *Server) Start(ctx context.Context) error {
 		IdleTimeout:  s.opts.idleTimeout,
 	}
 
-	s.opts.logger.Infof("[%s] 服务器启动 [addr:%s]", s.opts.name, s.opts.addr)
+	s.opts.logger.With(
+		logger.String("name", s.opts.name),
+		logger.String("addr", s.opts.addr),
+	).Info("[HTTP] 服务器启动")
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -94,7 +104,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	s.opts.logger.Infof("[%s] 服务器停止中", s.opts.name)
+	s.opts.logger.With(logger.String("name", s.opts.name)).Info("[HTTP] 服务器停止中")
 	return s.server.Shutdown(ctx)
 }
 
@@ -142,6 +152,11 @@ type options struct {
 	healthOptions  []health.Option
 	tracerName     string // 链路追踪服务名，为空则不启用
 	enableRecovery bool   // 是否启用 panic 恢复
+
+	// Auth
+	authenticator auth.Authenticator
+	authOptions   []auth.Option
+	publicPaths   []string // 公开路径（无需认证）
 }
 
 // defaultOptions 返回默认配置.
@@ -210,6 +225,9 @@ func WithConfig(cfg transport.HTTPConfig) Option {
 		if cfg.IdleTimeout > 0 {
 			o.idleTimeout = cfg.IdleTimeout
 		}
+		if len(cfg.PublicPaths) > 0 {
+			o.publicPaths = cfg.PublicPaths
+		}
 	}
 }
 
@@ -263,6 +281,86 @@ func WithTrace(serviceName string) Option {
 func WithRecovery() Option {
 	return func(o *options) {
 		o.enableRecovery = true
+	}
+}
+
+// WithAuth 启用认证.
+//
+// 示例:
+//
+//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"))
+//	authenticator := jwt.NewAuthenticator(jwtService)
+//
+//	server := httpserver.New(handler,
+//	    httpserver.WithAuth(authenticator),
+//	    httpserver.WithPublicPaths("/api/login", "/api/register"),
+//	)
+func WithAuth(authenticator auth.Authenticator, opts ...auth.Option) Option {
+	return func(o *options) {
+		o.authenticator = authenticator
+		o.authOptions = opts
+	}
+}
+
+// WithPublicPaths 设置公开路径（无需认证）.
+//
+// 路径格式:
+//   - "/api/login" (精确匹配)
+//   - "/api/public/*" (前缀匹配)
+func WithPublicPaths(paths ...string) Option {
+	return func(o *options) {
+		o.publicPaths = append(o.publicPaths, paths...)
+	}
+}
+
+// buildAuthOptions 构建 auth 选项.
+func buildAuthOptions(o *options) []auth.Option {
+	var authOpts []auth.Option
+
+	// 添加 logger
+	if o.logger != nil {
+		authOpts = append(authOpts, auth.WithLogger(o.logger))
+	}
+
+	// 添加用户配置的选项
+	authOpts = append(authOpts, o.authOptions...)
+
+	// 构建 skipper
+	if len(o.publicPaths) > 0 {
+		authOpts = append(authOpts, auth.WithSkipper(buildPathSkipper(o.publicPaths)))
+	}
+
+	return authOpts
+}
+
+// buildPathSkipper 构建路径跳过器.
+func buildPathSkipper(publicPaths []string) auth.Skipper {
+	exact := make(map[string]bool)
+	prefixes := make([]string, 0)
+
+	for _, p := range publicPaths {
+		if len(p) > 0 && p[len(p)-1] == '*' {
+			prefixes = append(prefixes, p[:len(p)-1])
+		} else {
+			exact[p] = true
+		}
+	}
+
+	return func(_ context.Context, req any) bool {
+		r, ok := req.(*http.Request)
+		if !ok {
+			return false
+		}
+		path := r.URL.Path
+		if exact[path] {
+			return true
+		}
+		for _, prefix := range prefixes {
+			if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
+				return true
+			}
+		}
+		return false
 	}
 }
 

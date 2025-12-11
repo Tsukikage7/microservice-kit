@@ -201,132 +201,6 @@ func TestMustFromContext_Panic(t *testing.T) {
 	MustFromContext(ctx)
 }
 
-func TestMemoryAuthenticator(t *testing.T) {
-	auth := NewMemoryAuthenticator()
-	ctx := context.Background()
-
-	principal := &Principal{
-		ID:   "user-123",
-		Type: PrincipalTypeUser,
-	}
-
-	// 注册令牌
-	auth.Register("token-123", principal)
-
-	// 认证成功
-	creds := Credentials{Token: "token-123"}
-	got, err := auth.Authenticate(ctx, creds)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ID != principal.ID {
-		t.Errorf("got ID = %v, want %v", got.ID, principal.ID)
-	}
-
-	// 认证失败 - 无效令牌
-	_, err = auth.Authenticate(ctx, Credentials{Token: "invalid"})
-	if err != ErrInvalidCredentials {
-		t.Errorf("expected ErrInvalidCredentials, got %v", err)
-	}
-
-	// 取消注册
-	auth.Unregister("token-123")
-	_, err = auth.Authenticate(ctx, creds)
-	if err != ErrInvalidCredentials {
-		t.Errorf("expected ErrInvalidCredentials after unregister, got %v", err)
-	}
-}
-
-func TestMemoryAuthenticator_Expired(t *testing.T) {
-	auth := NewMemoryAuthenticator()
-	ctx := context.Background()
-
-	expired := time.Now().Add(-time.Hour)
-	principal := &Principal{
-		ID:        "user-123",
-		ExpiresAt: &expired,
-	}
-
-	auth.Register("token-123", principal)
-
-	_, err := auth.Authenticate(ctx, Credentials{Token: "token-123"})
-	if err != ErrCredentialsExpired {
-		t.Errorf("expected ErrCredentialsExpired, got %v", err)
-	}
-}
-
-func TestChainAuthenticator(t *testing.T) {
-	ctx := context.Background()
-
-	auth1 := NewMemoryAuthenticator()
-	auth1.Register("token-1", &Principal{ID: "user-1"})
-
-	auth2 := NewMemoryAuthenticator()
-	auth2.Register("token-2", &Principal{ID: "user-2"})
-
-	chain := NewChainAuthenticator(auth1, auth2)
-
-	// 第一个认证器成功
-	got, err := chain.Authenticate(ctx, Credentials{Token: "token-1"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ID != "user-1" {
-		t.Errorf("got ID = %v, want user-1", got.ID)
-	}
-
-	// 第二个认证器成功
-	got, err = chain.Authenticate(ctx, Credentials{Token: "token-2"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ID != "user-2" {
-		t.Errorf("got ID = %v, want user-2", got.ID)
-	}
-
-	// 都失败
-	_, err = chain.Authenticate(ctx, Credentials{Token: "invalid"})
-	if err == nil {
-		t.Error("expected error")
-	}
-}
-
-func TestChainAuthenticator_Panic(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("should panic with no authenticators")
-		}
-	}()
-
-	NewChainAuthenticator()
-}
-
-func TestFuncAuthenticator(t *testing.T) {
-	ctx := context.Background()
-
-	auth := NewFuncAuthenticator(func(_ context.Context, creds Credentials) (*Principal, error) {
-		if creds.Token == "valid" {
-			return &Principal{ID: "user-123"}, nil
-		}
-		return nil, ErrInvalidCredentials
-	})
-
-	// 成功
-	got, err := auth.Authenticate(ctx, Credentials{Token: "valid"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ID != "user-123" {
-		t.Errorf("got ID = %v, want user-123", got.ID)
-	}
-
-	// 失败
-	_, err = auth.Authenticate(ctx, Credentials{Token: "invalid"})
-	if err != ErrInvalidCredentials {
-		t.Errorf("expected ErrInvalidCredentials, got %v", err)
-	}
-}
-
 func TestRoleAuthorizer(t *testing.T) {
 	ctx := context.Background()
 
@@ -381,7 +255,7 @@ func TestRoleAuthorizer(t *testing.T) {
 
 func TestRoleAuthorizer_RequireAll(t *testing.T) {
 	ctx := context.Background()
-	auth := NewRoleAuthorizer([]string{"admin", "editor"}, WithRequireAllRoles(true))
+	auth := NewRoleAuthorizer([]string{"admin", "editor"}, true)
 
 	// 有所有角色
 	principal := &Principal{Roles: []string{"admin", "editor", "user"}}
@@ -413,60 +287,6 @@ func TestPermissionAuthorizer(t *testing.T) {
 	}
 }
 
-func TestAllowAllAuthorizer(t *testing.T) {
-	ctx := context.Background()
-	auth := NewAllowAllAuthorizer()
-
-	if err := auth.Authorize(ctx, nil, "any", "any"); err != nil {
-		t.Errorf("should always allow: %v", err)
-	}
-}
-
-func TestDenyAllAuthorizer(t *testing.T) {
-	ctx := context.Background()
-	auth := NewDenyAllAuthorizer()
-
-	if err := auth.Authorize(ctx, &Principal{ID: "user"}, "any", "any"); err == nil {
-		t.Error("should always deny")
-	}
-}
-
-func TestChainAuthorizer(t *testing.T) {
-	ctx := context.Background()
-
-	roleAuth := NewRoleAuthorizer([]string{"admin"})
-	permAuth := NewPermissionAuthorizer([]string{"read:orders"})
-
-	chain := NewChainAuthorizer(roleAuth, permAuth)
-
-	// 都通过
-	principal := &Principal{
-		Roles:       []string{"admin"},
-		Permissions: []string{"read:orders"},
-	}
-	if err := chain.Authorize(ctx, principal, "", ""); err != nil {
-		t.Errorf("should authorize: %v", err)
-	}
-
-	// 角色不通过
-	principal = &Principal{
-		Roles:       []string{"user"},
-		Permissions: []string{"read:orders"},
-	}
-	if err := chain.Authorize(ctx, principal, "", ""); err == nil {
-		t.Error("should not authorize - missing role")
-	}
-
-	// 权限不通过
-	principal = &Principal{
-		Roles:       []string{"admin"},
-		Permissions: []string{"write:orders"},
-	}
-	if err := chain.Authorize(ctx, principal, "", ""); err == nil {
-		t.Error("should not authorize - missing permission")
-	}
-}
-
 func TestMiddleware_Panic(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
@@ -492,5 +312,68 @@ func TestIsForbidden(t *testing.T) {
 	}
 	if IsForbidden(ErrUnauthenticated) {
 		t.Error("should not be forbidden")
+	}
+}
+
+func TestCredentialsFromContext(t *testing.T) {
+	ctx := context.Background()
+
+	// 无凭据
+	if _, ok := CredentialsFromContext(ctx); ok {
+		t.Error("should not have credentials")
+	}
+
+	// 有凭据
+	creds := &Credentials{
+		Type:  CredentialTypeBearer,
+		Token: "test-token",
+	}
+	ctx = WithCredentials(ctx, creds)
+
+	got, ok := CredentialsFromContext(ctx)
+	if !ok {
+		t.Error("should have credentials")
+	}
+	if got.Token != creds.Token {
+		t.Errorf("got Token = %v, want %v", got.Token, creds.Token)
+	}
+}
+
+func TestPrincipal_GetMetadata(t *testing.T) {
+	principal := &Principal{
+		Metadata: map[string]any{
+			"key1": "value1",
+			"key2": 123,
+		},
+	}
+
+	// 获取存在的 key
+	v, ok := principal.GetMetadata("key1")
+	if !ok || v != "value1" {
+		t.Errorf("GetMetadata(key1) = %v, %v", v, ok)
+	}
+
+	// 获取不存在的 key
+	_, ok = principal.GetMetadata("key3")
+	if ok {
+		t.Error("should not have key3")
+	}
+
+	// GetMetadataString
+	s := principal.GetMetadataString("key1")
+	if s != "value1" {
+		t.Errorf("GetMetadataString(key1) = %v", s)
+	}
+
+	s = principal.GetMetadataString("key2") // 非字符串类型
+	if s != "" {
+		t.Errorf("GetMetadataString(key2) should return empty, got %v", s)
+	}
+
+	// nil metadata
+	p2 := &Principal{}
+	_, ok = p2.GetMetadata("any")
+	if ok {
+		t.Error("should return false for nil metadata")
 	}
 }

@@ -7,18 +7,12 @@ import (
 	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
-// Middleware 返回 Endpoint 认证授权中间件.
+// Middleware 返回 Endpoint 认证中间件.
 //
 // 示例:
 //
-//	authenticator := authjwt.NewAuthenticator(jwtService)
+//	authenticator := jwt.NewAuthenticator(jwtSrv)
 //	endpoint = auth.Middleware(authenticator)(endpoint)
-//
-//	// 带授权
-//	endpoint = auth.Middleware(authenticator,
-//	    auth.WithAuthorizer(rbacAuth),
-//	    auth.WithActionResource("read", "orders"),
-//	)(endpoint)
 func Middleware(authenticator Authenticator, opts ...Option) transport.Middleware {
 	if authenticator == nil {
 		panic("auth: 认证器不能为空")
@@ -40,10 +34,7 @@ func Middleware(authenticator Authenticator, opts ...Option) transport.Middlewar
 			creds, err := extractCredentials(ctx, request, o)
 			if err != nil {
 				if o.logger != nil {
-					o.logger.WithContext(ctx).Debug(
-						"[Auth] 凭据提取失败",
-						logger.Err(err),
-					)
+					o.logger.WithContext(ctx).Debug("[Auth] 凭据提取失败", logger.Err(err))
 				}
 				return nil, handleError(ctx, ErrCredentialsNotFound, o)
 			}
@@ -52,10 +43,7 @@ func Middleware(authenticator Authenticator, opts ...Option) transport.Middlewar
 			principal, err := authenticator.Authenticate(ctx, *creds)
 			if err != nil {
 				if o.logger != nil {
-					o.logger.WithContext(ctx).Warn(
-						"[Auth] 认证失败",
-						logger.Err(err),
-					)
+					o.logger.WithContext(ctx).Warn("[Auth] 认证失败", logger.Err(err))
 				}
 				return nil, handleError(ctx, err, o)
 			}
@@ -65,26 +53,15 @@ func Middleware(authenticator Authenticator, opts ...Option) transport.Middlewar
 
 			// 授权
 			if o.authorizer != nil {
-				if err := o.authorizer.Authorize(ctx, principal, o.action, o.resource); err != nil {
+				if err := o.authorizer.Authorize(ctx, principal, "", ""); err != nil {
 					if o.logger != nil {
-						o.logger.WithContext(ctx).Warn(
-							"[Auth] 授权失败",
+						o.logger.WithContext(ctx).Warn("[Auth] 授权失败",
 							logger.String("principal_id", principal.ID),
-							logger.String("action", o.action),
-							logger.String("resource", o.resource),
 							logger.Err(err),
 						)
 					}
 					return nil, handleError(ctx, err, o)
 				}
-			}
-
-			if o.logger != nil {
-				o.logger.WithContext(ctx).Debug(
-					"[Auth] 认证成功",
-					logger.String("principal_id", principal.ID),
-					logger.String("principal_type", principal.Type),
-				)
 			}
 
 			return next(ctx, request)
@@ -94,21 +71,15 @@ func Middleware(authenticator Authenticator, opts ...Option) transport.Middlewar
 
 // extractCredentials 提取凭据.
 func extractCredentials(ctx context.Context, request any, o *options) (*Credentials, error) {
-	// 使用自定义提取器
 	if o.credentialsExtractor != nil {
 		return o.credentialsExtractor(ctx, request)
 	}
-
-	// 尝试从 context 获取
 	if creds, ok := CredentialsFromContext(ctx); ok {
 		return creds, nil
 	}
-
-	// 尝试从请求中提取（如果请求实现了凭据接口）
 	if credsProvider, ok := request.(interface{ Credentials() *Credentials }); ok {
 		return credsProvider.Credentials(), nil
 	}
-
 	return nil, ErrCredentialsNotFound
 }
 
@@ -118,11 +89,6 @@ func handleError(ctx context.Context, err error, o *options) error {
 		return o.errorHandler(ctx, err)
 	}
 	return err
-}
-
-// RequireAuth 便捷函数，创建仅认证的中间件.
-func RequireAuth(authenticator Authenticator, opts ...Option) transport.Middleware {
-	return Middleware(authenticator, opts...)
 }
 
 // RequireRoles 便捷函数，创建需要指定角色的中间件.

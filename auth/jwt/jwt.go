@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/Tsukikage7/microservice-kit/logger"
 )
 
 // JWT JWT 服务.
@@ -60,7 +62,10 @@ func (j *JWT) Generate(claims Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(j.opts.secretKey))
 	if err != nil {
-		j.opts.logger.Errorf("[%s] 生成令牌失败 [error:%v]", j.opts.name, err)
+		j.opts.logger.With(
+			logger.String("name", j.opts.name),
+			logger.Err(err),
+		).Error("[JWT] 生成令牌失败")
 		return "", fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
 
@@ -76,13 +81,20 @@ func (j *JWT) Generate(claims Claims) (string, error) {
 			key := j.buildCacheKey(subject, iat.Unix())
 			ttl := time.Until(exp.Time)
 			if err := j.opts.cache.Set(context.Background(), key, tokenString, ttl); err != nil {
-				j.opts.logger.Debugf("[%s] 令牌缓存存储失败 [subject:%s] [error:%v]", j.opts.name, subject, err)
+				j.opts.logger.With(
+					logger.String("name", j.opts.name),
+					logger.String("subject", subject),
+					logger.Err(err),
+				).Debug("[JWT] 令牌缓存存储失败")
 			}
 		}
 	}
 
 	subject, _ := claims.GetSubject()
-	j.opts.logger.Debugf("[%s] 令牌生成成功 [subject:%s]", j.opts.name, subject)
+	j.opts.logger.With(
+		logger.String("name", j.opts.name),
+		logger.String("subject", subject),
+	).Debug("[JWT] 令牌生成成功")
 	return tokenString, nil
 }
 
@@ -91,7 +103,10 @@ func (j *JWT) GenerateWithDuration(claims jwt.Claims, duration time.Duration) (s
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(j.opts.secretKey))
 	if err != nil {
-		j.opts.logger.Errorf("[%s] 生成令牌失败 [error:%v]", j.opts.name, err)
+		j.opts.logger.With(
+			logger.String("name", j.opts.name),
+			logger.Err(err),
+		).Error("[JWT] 生成令牌失败")
 		return "", fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
 
@@ -120,7 +135,10 @@ func (j *JWT) ValidateWithClaims(tokenString string, claims jwt.Claims) (jwt.Cla
 	})
 
 	if err != nil {
-		j.opts.logger.Warnf("[%s] 令牌验证失败 [error:%v]", j.opts.name, err)
+		j.opts.logger.With(
+			logger.String("name", j.opts.name),
+			logger.Err(err),
+		).Warn("[JWT] 令牌验证失败")
 		return nil, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
 
@@ -178,19 +196,28 @@ func (j *JWT) RefreshWithClaims(tokenString string, oldClaimsType jwt.Claims, ne
 	}
 
 	newSubject, _ := newClaims.GetSubject()
-	j.opts.logger.Debugf("[%s] 令牌刷新成功 [subject:%s]", j.opts.name, newSubject)
+	j.opts.logger.With(
+		logger.String("name", j.opts.name),
+		logger.String("subject", newSubject),
+	).Debug("[JWT] 令牌刷新成功")
 	return newToken, nil
 }
 
 // Revoke 撤销用户的所有令牌.
 func (j *JWT) Revoke(ctx context.Context, subject string) error {
 	if j.opts.cache == nil {
-		j.opts.logger.Debugf("[%s] 未配置缓存，无需撤销令牌 [subject:%s]", j.opts.name, subject)
+		j.opts.logger.With(
+			logger.String("name", j.opts.name),
+			logger.String("subject", subject),
+		).Debug("[JWT] 未配置缓存，无需撤销令牌")
 		return nil
 	}
 
 	pattern := j.opts.cacheKeyPrefix + subject + ":*"
-	j.opts.logger.Warnf("[%s] 令牌撤销需要手动删除匹配 %s 的 key", j.opts.name, pattern)
+	j.opts.logger.With(
+		logger.String("name", j.opts.name),
+		logger.String("pattern", pattern),
+	).Warn("[JWT] 令牌撤销需要手动删除匹配的 key")
 
 	return nil
 }
@@ -254,7 +281,11 @@ func (j *JWT) validateCachedToken(tokenString string, claims jwt.Claims) error {
 	key := j.buildCacheKey(subject, iat.Unix())
 	storedToken, err := j.opts.cache.Get(context.Background(), key)
 	if err != nil {
-		j.opts.logger.Warnf("[%s] 缓存令牌验证失败 [subject:%s] [error:%v]", j.opts.name, subject, err)
+		j.opts.logger.With(
+			logger.String("name", j.opts.name),
+			logger.String("subject", subject),
+			logger.Err(err),
+		).Warn("[JWT] 缓存令牌验证失败")
 		return ErrTokenRevoked
 	}
 
