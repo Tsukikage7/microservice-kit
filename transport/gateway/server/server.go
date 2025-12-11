@@ -16,10 +16,11 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport/response"
+	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
+	"github.com/Tsukikage7/microservice-kit/transport/response"
 )
 
 // Registrar 服务注册器接口.
@@ -57,6 +58,9 @@ func New(opts ...Option) *Server {
 	if o.logger == nil {
 		panic("gateway: logger is required")
 	}
+
+	// 应用 recovery 拦截器（必须在所有 option 处理之后）
+	applyRecoveryInterceptors(o)
 
 	muxOpts := []runtime.ServeMuxOption{
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
@@ -278,9 +282,14 @@ func (s *Server) startHTTP(ctx context.Context) error {
 	// 使用健康检查中间件包装 mux
 	var handler http.Handler = health.Middleware(s.health)(s.mux)
 
-	// 如果启用链路追踪，使用 trace 中间件包装（在最外层）
+	// 如果启用链路追踪，使用 trace 中间件包装
 	if s.opts.tracerName != "" {
 		handler = tracing.HTTPMiddleware(s.opts.tracerName)(handler)
+	}
+
+	// 如果启用 panic 恢复，使用 recovery 中间件包装（在最外层）
+	if s.opts.enableRecovery {
+		handler = recovery.HTTPMiddleware(recovery.WithLogger(s.opts.logger))(handler)
 	}
 
 	s.httpHandler = handler

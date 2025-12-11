@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 	"google.golang.org/grpc"
@@ -177,13 +178,29 @@ func (s *Server) buildServerOptions() []grpc.ServerOption {
 		}),
 	}
 
-	// 添加拦截器
-	if len(s.opts.unaryInterceptors) > 0 {
-		opts = append(opts, grpc.ChainUnaryInterceptor(s.opts.unaryInterceptors...))
+	// 构建拦截器链
+	unaryInterceptors := s.opts.unaryInterceptors
+	streamInterceptors := s.opts.streamInterceptors
+
+	// 如果启用 panic 恢复，将 recovery 拦截器添加到最前面（最外层）
+	if s.opts.enableRecovery {
+		unaryInterceptors = append(
+			[]grpc.UnaryServerInterceptor{recovery.UnaryServerInterceptor(recovery.WithLogger(s.opts.logger))},
+			unaryInterceptors...,
+		)
+		streamInterceptors = append(
+			[]grpc.StreamServerInterceptor{recovery.StreamServerInterceptor(recovery.WithLogger(s.opts.logger))},
+			streamInterceptors...,
+		)
 	}
 
-	if len(s.opts.streamInterceptors) > 0 {
-		opts = append(opts, grpc.ChainStreamInterceptor(s.opts.streamInterceptors...))
+	// 添加拦截器
+	if len(unaryInterceptors) > 0 {
+		opts = append(opts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
+	}
+
+	if len(streamInterceptors) > 0 {
+		opts = append(opts, grpc.ChainStreamInterceptor(streamInterceptors...))
 	}
 
 	// 添加自定义选项

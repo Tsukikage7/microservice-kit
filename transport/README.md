@@ -12,6 +12,10 @@ transport/
 ├── http/
 │   ├── client/     # HTTP 客户端（服务发现）
 │   └── server/     # HTTP 服务器（超时配置、优雅关闭）
+├── gateway/
+│   └── server/     # gRPC-Gateway 双协议服务器
+├── health/         # 健康检查（HTTP + gRPC）
+├── response/       # 统一响应格式
 ├── endpoint.go     # Endpoint 核心抽象
 ├── server.go       # 统一应用管理器（Application）
 ├── hooks.go        # 生命周期钩子
@@ -228,6 +232,8 @@ if err := srv.Start(ctx); err != nil {
 | `WithUnaryInterceptor` | - | 一元拦截器 |
 | `WithStreamInterceptor` | - | 流拦截器 |
 | `WithServerOption` | - | 自定义 gRPC 选项 |
+| `WithTrace` | - | 启用链路追踪 |
+| `WithRecovery` | - | 启用 panic 恢复 |
 
 ## HTTP 客户端
 
@@ -290,3 +296,131 @@ if err := srv.Start(ctx); err != nil {
 | `WithReadTimeout` | `30s` | 读取超时 |
 | `WithWriteTimeout` | `30s` | 写入超时 |
 | `WithIdleTimeout` | `120s` | 空闲超时 |
+| `WithTrace` | - | 启用链路追踪 |
+| `WithRecovery` | - | 启用 panic 恢复 |
+
+## 可观测性
+
+### 链路追踪
+
+启用链路追踪后，所有请求会自动生成 traceId/spanId，并传播到下游服务：
+
+```go
+import "github.com/Tsukikage7/microservice-kit/tracing"
+
+// 1. 初始化全局 TracerProvider（应用启动时）
+tp, err := tracing.NewTracer("my-service",
+    tracing.WithJaegerExporter("http://localhost:14268/api/traces"),
+)
+defer tp.Shutdown(ctx)
+
+// 2. 启用服务器链路追踪
+httpSrv := httpserver.New(mux,
+    httpserver.WithLogger(log),
+    httpserver.WithTrace("my-service"),  // 启用 HTTP 追踪
+)
+
+grpcSrv := grpcserver.New(
+    grpcserver.WithLogger(log),
+    grpcserver.WithTrace("my-service"),  // 启用 gRPC 追踪
+)
+```
+
+### Panic 恢复
+
+启用 panic 恢复后，handler 中的 panic 会被捕获并记录，避免服务崩溃：
+
+```go
+// HTTP 服务器
+httpSrv := httpserver.New(mux,
+    httpserver.WithLogger(log),
+    httpserver.WithRecovery(),  // 启用 panic 恢复
+)
+
+// gRPC 服务器
+grpcSrv := grpcserver.New(
+    grpcserver.WithLogger(log),
+    grpcserver.WithRecovery(),  // 启用 panic 恢复
+)
+```
+
+**Panic 日志输出示例：**
+
+```json
+{
+  "level": "ERROR",
+  "timestamp": "2025-12-11 15:30:46",
+  "msg": "http panic recovered",
+  "traceId": "abc123def456",
+  "spanId": "xyz789",
+  "panic": "runtime error: index out of range [5] with length 3",
+  "method": "GET",
+  "path": "/api/users/123",
+  "stack": "goroutine 42 [running]:..."
+}
+```
+
+### 推荐配置
+
+生产环境建议同时启用链路追踪和 panic 恢复：
+
+```go
+httpSrv := httpserver.New(mux,
+    httpserver.WithLogger(log),
+    httpserver.WithTrace("my-service"),
+    httpserver.WithRecovery(),
+)
+
+grpcSrv := grpcserver.New(
+    grpcserver.WithLogger(log),
+    grpcserver.WithTrace("my-service"),
+    grpcserver.WithRecovery(),
+)
+```
+
+**中间件执行顺序（从外到内）：**
+
+```
+Recovery → Trace → Health → 业务逻辑
+```
+
+Recovery 在最外层，确保能捕获所有内层 panic（包括 Trace 中间件）。
+
+## Gateway 服务器
+
+gRPC-Gateway 双协议服务器，同时提供 gRPC 和 HTTP/JSON API：
+
+```go
+import gateway "github.com/Tsukikage7/microservice-kit/transport/gateway/server"
+
+srv := gateway.New(
+    gateway.WithGRPCAddr(":9090"),
+    gateway.WithHTTPAddr(":8080"),
+    gateway.WithLogger(log),
+    gateway.WithTrace("my-service"),
+    gateway.WithRecovery(),
+    gateway.WithResponse(),  // 统一响应格式
+)
+srv.Register(userService, orderService)
+
+if err := srv.Start(ctx); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Gateway 配置选项
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `WithName` | `Gateway` | 服务器名称 |
+| `WithGRPCAddr` | `:9090` | gRPC 监听地址 |
+| `WithHTTPAddr` | `:8080` | HTTP 监听地址 |
+| `WithLogger` | - | 日志实例（必需） |
+| `WithReflection` | `true` | 是否启用 gRPC 反射 |
+| `WithKeepalive` | `60s, 20s` | gRPC Keepalive 参数 |
+| `WithUnaryInterceptor` | - | gRPC 一元拦截器 |
+| `WithStreamInterceptor` | - | gRPC 流拦截器 |
+| `WithHTTPTimeout` | `30s, 30s, 120s` | HTTP 超时（读/写/空闲） |
+| `WithTrace` | - | 启用链路追踪（gRPC + HTTP） |
+| `WithRecovery` | - | 启用 panic 恢复（gRPC + HTTP） |
+| `WithResponse` | - | 启用统一响应格式 |

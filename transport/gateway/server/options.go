@@ -4,9 +4,10 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport/response"
+	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
+	"github.com/Tsukikage7/microservice-kit/transport/response"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,6 +50,9 @@ type options struct {
 
 	// Response
 	enableResponse bool // 是否启用统一响应格式
+
+	// Recovery
+	enableRecovery bool // 是否启用 panic 恢复
 
 	logger logger.Logger
 }
@@ -213,4 +217,30 @@ func WithResponse() Option {
 		// 将 response 拦截器添加到拦截器链末尾（在业务逻辑之后处理错误）
 		o.unaryInterceptors = append(o.unaryInterceptors, response.UnaryServerInterceptor())
 	}
+}
+
+// WithRecovery 启用 panic 恢复（gRPC + HTTP 双端）.
+//
+// 启用后，handler 中的 panic 会被捕获并记录:
+//   - gRPC: 返回 codes.Internal 错误
+//   - HTTP: 返回 500 状态码
+func WithRecovery() Option {
+	return func(o *options) {
+		o.enableRecovery = true
+	}
+}
+
+// applyRecoveryInterceptors 应用 recovery 拦截器到拦截器链最前面.
+func applyRecoveryInterceptors(o *options) {
+	if !o.enableRecovery || o.logger == nil {
+		return
+	}
+	o.unaryInterceptors = append(
+		[]grpc.UnaryServerInterceptor{recovery.UnaryServerInterceptor(recovery.WithLogger(o.logger))},
+		o.unaryInterceptors...,
+	)
+	o.streamInterceptors = append(
+		[]grpc.StreamServerInterceptor{recovery.StreamServerInterceptor(recovery.WithLogger(o.logger))},
+		o.streamInterceptors...,
+	)
 }

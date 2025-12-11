@@ -29,6 +29,7 @@ type options struct {
 	healthTimeout      time.Duration
 	healthOptions      []health.Option
 	tracerName         string // 链路追踪服务名，为空则不启用
+	enableRecovery     bool   // 是否启用 panic 恢复
 }
 
 // defaultOptions 返回默认配置.
@@ -166,5 +167,15 @@ func WithTrace(serviceName string) Option {
 			[]grpc.StreamServerInterceptor{tracing.StreamServerInterceptor(serviceName)},
 			o.streamInterceptors...,
 		)
+	}
+}
+
+// WithRecovery 启用 panic 恢复.
+//
+// 启用后，handler 中的 panic 会被捕获并记录，返回 codes.Internal 错误.
+// 注意: recovery 拦截器会添加到拦截器链最前面，确保能捕获所有内层 panic.
+func WithRecovery() Option {
+	return func(o *options) {
+		o.enableRecovery = true
 	}
 }

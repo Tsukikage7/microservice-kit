@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
+	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
@@ -41,9 +42,14 @@ func New(handler http.Handler, opts ...Option) *Server {
 	// 使用健康检查中间件包装 handler
 	wrappedHandler := health.Middleware(h)(handler)
 
-	// 如果启用链路追踪，使用 trace 中间件包装（在最外层）
+	// 如果启用链路追踪，使用 trace 中间件包装
 	if o.tracerName != "" {
 		wrappedHandler = tracing.HTTPMiddleware(o.tracerName)(wrappedHandler)
+	}
+
+	// 如果启用 panic 恢复，使用 recovery 中间件包装（在最外层）
+	if o.enableRecovery {
+		wrappedHandler = recovery.HTTPMiddleware(recovery.WithLogger(o.logger))(wrappedHandler)
 	}
 
 	return &Server{
@@ -126,15 +132,16 @@ type Option func(*options)
 
 // options 服务器配置.
 type options struct {
-	name          string
-	addr          string
-	readTimeout   time.Duration
-	writeTimeout  time.Duration
-	idleTimeout   time.Duration
-	logger        logger.Logger
-	healthTimeout time.Duration
-	healthOptions []health.Option
-	tracerName    string // 链路追踪服务名，为空则不启用
+	name           string
+	addr           string
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+	idleTimeout    time.Duration
+	logger         logger.Logger
+	healthTimeout  time.Duration
+	healthOptions  []health.Option
+	tracerName     string // 链路追踪服务名，为空则不启用
+	enableRecovery bool   // 是否启用 panic 恢复
 }
 
 // defaultOptions 返回默认配置.
@@ -247,6 +254,15 @@ func WithLivenessChecker(checkers ...health.Checker) Option {
 func WithTrace(serviceName string) Option {
 	return func(o *options) {
 		o.tracerName = serviceName
+	}
+}
+
+// WithRecovery 启用 panic 恢复.
+//
+// 启用后，handler 中的 panic 会被捕获并记录，返回 500 状态码.
+func WithRecovery() Option {
+	return func(o *options) {
+		o.enableRecovery = true
 	}
 }
 
