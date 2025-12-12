@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
+	"github.com/Tsukikage7/microservice-kit/clientip"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
@@ -41,6 +42,10 @@ type options struct {
 	publicMethods       []string        // 公开方法（无需认证）
 	enableAutoDiscovery bool            // 启用 proto option 自动发现
 	discoveredMethods   map[string]bool // 自动发现的公开方法（延迟填充）
+
+	// ClientIP
+	enableClientIP  bool
+	clientIPOptions []clientip.Option
 }
 
 // defaultOptions 返回默认配置.
@@ -360,5 +365,28 @@ func buildMethodSkipper(publicMethods []string) auth.Skipper {
 			}
 		}
 		return false
+	}
+}
+
+// WithClientIP 启用客户端 IP 提取.
+//
+// 启用后，可以通过 clientip.GetIP(ctx) 获取客户端真实 IP.
+//
+// 示例:
+//
+//	server := grpcserver.New(
+//	    grpcserver.WithClientIP(),  // 默认配置
+//	)
+//
+//	// 或指定可信代理
+//	server := grpcserver.New(
+//	    grpcserver.WithClientIP(
+//	        clientip.WithTrustedProxies("10.0.0.0/8"),
+//	    ),
+//	)
+func WithClientIP(opts ...clientip.Option) Option {
+	return func(o *options) {
+		o.enableClientIP = true
+		o.clientIPOptions = opts
 	}
 }

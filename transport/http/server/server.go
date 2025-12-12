@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
+	"github.com/Tsukikage7/microservice-kit/clientip"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/tracing"
@@ -42,6 +43,11 @@ func New(handler http.Handler, opts ...Option) *Server {
 
 	// 使用健康检查中间件包装 handler
 	wrappedHandler := health.Middleware(h)(handler)
+
+	// 如果启用客户端 IP 提取，使用 clientip 中间件包装
+	if o.enableClientIP {
+		wrappedHandler = clientip.HTTPMiddleware(o.clientIPOptions...)(wrappedHandler)
+	}
 
 	// 如果启用认证，使用 auth 中间件包装
 	if o.authenticator != nil {
@@ -157,6 +163,10 @@ type options struct {
 	authenticator auth.Authenticator
 	authOptions   []auth.Option
 	publicPaths   []string // 公开路径（无需认证）
+
+	// ClientIP
+	enableClientIP   bool
+	clientIPOptions  []clientip.Option
 }
 
 // defaultOptions 返回默认配置.
@@ -361,6 +371,29 @@ func buildPathSkipper(publicPaths []string) auth.Skipper {
 			}
 		}
 		return false
+	}
+}
+
+// WithClientIP 启用客户端 IP 提取.
+//
+// 启用后，可以通过 clientip.GetIP(ctx) 获取客户端真实 IP.
+//
+// 示例:
+//
+//	server := httpserver.New(handler,
+//	    httpserver.WithClientIP(),  // 默认配置
+//	)
+//
+//	// 或指定可信代理
+//	server := httpserver.New(handler,
+//	    httpserver.WithClientIP(
+//	        clientip.WithTrustedProxies("10.0.0.0/8"),
+//	    ),
+//	)
+func WithClientIP(opts ...clientip.Option) Option {
+	return func(o *options) {
+		o.enableClientIP = true
+		o.clientIPOptions = opts
 	}
 }
 

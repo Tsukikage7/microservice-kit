@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
+	"github.com/Tsukikage7/microservice-kit/clientip"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/recovery"
 	"github.com/Tsukikage7/microservice-kit/transport"
@@ -192,6 +193,18 @@ func (s *Server) buildServerOptions() []grpc.ServerOption {
 	// 构建拦截器链
 	unaryInterceptors := s.opts.unaryInterceptors
 	streamInterceptors := s.opts.streamInterceptors
+
+	// 如果启用客户端 IP 提取，添加 clientip 拦截器
+	if s.opts.enableClientIP {
+		unaryInterceptors = append(
+			unaryInterceptors,
+			clientip.UnaryServerInterceptor(s.opts.clientIPOptions...),
+		)
+		streamInterceptors = append(
+			streamInterceptors,
+			clientip.StreamServerInterceptor(s.opts.clientIPOptions...),
+		)
+	}
 
 	// 如果启用认证，添加 auth 拦截器
 	if s.opts.authenticator != nil {
