@@ -41,12 +41,21 @@ go get github.com/Tsukikage7/microservice-kit
 | [request/referer](./request/referer/) | 来源页面解析、UTM 参数 | ✅ | ✅ |
 | [request/activity](./request/activity/) | 用户活动追踪（Redis + Kafka） | ✅ | ✅ |
 
+### 传输扩展 (transport/)
+
+| 包 | 说明 |
+|---|------|
+| [transport/websocket](./transport/websocket/) | WebSocket 服务端（gorilla/websocket） |
+| [transport/sse](./transport/sse/) | Server-Sent Events 服务端 |
+
 ### 存储 (storage/)
 
 | 包 | 说明 | 工厂函数 |
 |---|------|----------|
 | [storage/cache](./storage/cache/) | 缓存（内存、Redis） | `NewCache` / `MustNewCache` |
 | [storage/database](./storage/database/) | 数据库（GORM） | `NewDatabase` / `MustNewDatabase` |
+| [storage/mongodb](./storage/mongodb/) | MongoDB 客户端 | `NewClient` / `MustNewClient` |
+| [storage/s3](./storage/s3/) | S3 兼容对象存储 | `NewClient` / `MustNewClient` |
 | [storage/lock](./storage/lock/) | 分布式锁 | `NewLock` |
 
 ### 工具 (util/)
@@ -464,6 +473,109 @@ if gormDB, ok := database.AsGORM(db); ok {
 }
 ```
 
+### MongoDB - 文档数据库
+
+```go
+import "github.com/Tsukikage7/microservice-kit/storage/mongodb"
+
+client, _ := mongodb.NewClient(&mongodb.Config{
+    URI:      "mongodb://localhost:27017",
+    Database: "mydb",
+}, log)
+defer client.Close(ctx)
+
+// 插入文档
+coll := client.Collection("users")
+result, _ := coll.InsertOne(ctx, mongodb.M{"name": "John", "age": 30})
+
+// 查询文档
+var user map[string]any
+coll.FindOne(ctx, mongodb.M{"name": "John"}).Decode(&user)
+
+// 更新文档
+coll.UpdateOne(ctx, mongodb.M{"name": "John"}, mongodb.M{"$set": mongodb.M{"age": 31}})
+
+// 事务操作
+client.UseTransaction(ctx, func(sc context.Context) error {
+    coll.InsertOne(sc, mongodb.M{"name": "Alice"})
+    coll.InsertOne(sc, mongodb.M{"name": "Bob"})
+    return nil
+})
+```
+
+### S3 - 对象存储
+
+```go
+import "github.com/Tsukikage7/microservice-kit/storage/s3"
+
+client, _ := s3.NewClient(&s3.Config{
+    Endpoint:     "http://localhost:9000",
+    Region:       "us-east-1",
+    AccessKey:    "minioadmin",
+    SecretKey:    "minioadmin",
+    Bucket:       "my-bucket",
+    UsePathStyle: true, // MinIO 需要
+}, log)
+
+// 上传文件
+file, _ := os.Open("photo.jpg")
+client.Upload(ctx, "images/photo.jpg", file, fileSize,
+    s3.WithContentType("image/jpeg"),
+)
+
+// 下载文件
+obj, _ := client.GetObject(ctx, "images/photo.jpg")
+io.Copy(output, obj.Body)
+obj.Body.Close()
+
+// 生成预签名 URL
+url, _ := client.PresignGetObject(ctx, "images/photo.jpg", 1*time.Hour)
+```
+
+### WebSocket - 实时通信
+
+```go
+import "github.com/Tsukikage7/microservice-kit/transport/websocket"
+
+// 创建消息处理器
+handler := func(client websocket.Client, msg *websocket.Message) {
+    // 广播消息给所有客户端
+    hub.Broadcast(msg)
+}
+
+// 创建 Hub
+hub := websocket.NewHub(handler,
+    websocket.RecoveryMiddleware(log),
+    websocket.LoggingMiddleware(log),
+)
+go hub.Run(ctx)
+
+// HTTP 升级处理
+http.HandleFunc("/ws", websocket.HTTPHandler(hub, websocket.DefaultConfig()))
+```
+
+### SSE - 服务端推送
+
+```go
+import "github.com/Tsukikage7/microservice-kit/transport/sse"
+
+// 创建 SSE 服务器
+server := sse.NewServer(sse.DefaultConfig())
+go server.Run(ctx)
+
+// HTTP 处理
+http.HandleFunc("/events", server.ServeHTTP)
+
+// 广播事件
+server.Broadcast(sse.NewJSONEvent("update", map[string]any{
+    "type": "notification",
+    "data": "Hello, World!",
+}))
+
+// 发送给指定客户端
+server.Send(clientID, sse.NewTextEvent("message", "Private message"))
+```
+
 ### Discovery - 服务发现
 
 ```go
@@ -555,9 +667,15 @@ defer scheduler.Stop()
 - **[request/referer](./request/referer/)** - 来源页面解析、UTM 参数
 - **[request/activity](./request/activity/)** - 用户活动追踪
 
+### 传输扩展 (transport/)
+- **[transport/websocket](./transport/websocket/)** - WebSocket 服务端（连接管理、广播、中间件）
+- **[transport/sse](./transport/sse/)** - Server-Sent Events（实时推送、主题订阅）
+
 ### 存储 (storage/)
 - **[storage/cache](./storage/cache/)** - 缓存（内存、Redis）
 - **[storage/database](./storage/database/)** - 数据库（GORM）
+- **[storage/mongodb](./storage/mongodb/)** - MongoDB（CRUD、事务、索引）
+- **[storage/s3](./storage/s3/)** - S3 兼容存储（分片上传、预签名 URL）
 - **[storage/lock](./storage/lock/)** - 分布式锁
 
 ### 工具 (util/)
