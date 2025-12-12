@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/storage/cache"
 )
 
 // Redis 基于 Redis 的分布式锁.

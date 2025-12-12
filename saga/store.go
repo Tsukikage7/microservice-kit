@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/storage/cache"
 )
 
 // Store Saga 状态存储接口.

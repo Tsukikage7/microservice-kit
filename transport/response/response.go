@@ -1,7 +1,7 @@
 package response
 
 import (
-	"github.com/Tsukikage7/microservice-kit/pagination"
+	"github.com/Tsukikage7/microservice-kit/util/pagination"
 )
 
 // Response 统一响应体.

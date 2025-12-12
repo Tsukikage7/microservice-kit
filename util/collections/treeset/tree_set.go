@@ -4,7 +4,7 @@ package treeset
 import (
 	"cmp"
 
-	"github.com/Tsukikage7/microservice-kit/collections/treemap"
+	"github.com/Tsukikage7/microservice-kit/util/collections/treemap"
 )
 
 // TreeSet 基于红黑树的有序集合.

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Tsukikage7/microservice-kit/metrics"
+	"github.com/Tsukikage7/microservice-kit/observability/metrics"
 )
 
 func TestClientOptions(t *testing.T) {

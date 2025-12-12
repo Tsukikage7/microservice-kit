@@ -3,7 +3,7 @@ package messaging
 import (
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/metrics"
+	"github.com/Tsukikage7/microservice-kit/observability/metrics"
 )
 
 // messagingMetrics 消息队列指标记录器.

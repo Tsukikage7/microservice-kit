@@ -10,31 +10,73 @@ go get github.com/Tsukikage7/microservice-kit
 
 ## 包概览
 
-### 中间件组件
+### 可观测性 (observability/)
 
 | 包 | 说明 | Endpoint | HTTP | gRPC |
 |---|------|:--------:|:----:|:----:|
-| [transport](./transport/) | 传输层抽象（Endpoint、Middleware） | ✅ 核心 | - | - |
-| [metrics](./metrics/) | Prometheus 指标收集 | ✅ | ✅ | ✅ |
-| [tracing](./tracing/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
-| [ratelimit](./ratelimit/) | 限流（令牌桶、滑动窗口、分布式） | ✅ | ✅ | ✅ |
-| [retry](./retry/) | 重试机制（指数退避） | ✅ | ✅ | ✅ |
-| [auth](./auth/) | 认证授权（JWT、API Key、RBAC） | ✅ | ✅ | ✅ |
+| [observability/metrics](./observability/metrics/) | Prometheus 指标收集 | ✅ | ✅ | ✅ |
+| [observability/tracing](./observability/tracing/) | OpenTelemetry 链路追踪 | ✅ | ✅ | ✅ |
 
-### 基础设施组件
+### 中间件 (middleware/)
+
+| 包 | 说明 | Endpoint | HTTP | gRPC |
+|---|------|:--------:|:----:|:----:|
+| [middleware/ratelimit](./middleware/ratelimit/) | 限流（令牌桶、滑动窗口、分布式） | ✅ | ✅ | ✅ |
+| [middleware/retry](./middleware/retry/) | 重试机制（指数退避） | ✅ | ✅ | ✅ |
+| [middleware/recovery](./middleware/recovery/) | Panic 恢复 | ✅ | ✅ | ✅ |
+| [middleware/timeout](./middleware/timeout/) | 超时控制 | ✅ | ✅ | ✅ |
+| [middleware/idempotency](./middleware/idempotency/) | 幂等性保证 | ✅ | ✅ | - |
+| [middleware/semaphore](./middleware/semaphore/) | 并发控制 | ✅ | - | - |
+
+### 请求上下文 (request/)
+
+| 包 | 说明 | HTTP | gRPC |
+|---|------|:----:|:----:|
+| [request](./request/) | 组合中间件（统一入口） | ✅ | ✅ |
+| [request/clientip](./request/clientip/) | 客户端 IP 提取、地理位置、ACL | ✅ | ✅ |
+| [request/useragent](./request/useragent/) | User-Agent 解析 | ✅ | ✅ |
+| [request/deviceinfo](./request/deviceinfo/) | 设备信息（Client Hints 优先） | ✅ | ✅ |
+| [request/botdetect](./request/botdetect/) | 机器人检测 | ✅ | ✅ |
+| [request/locale](./request/locale/) | 语言区域设置 | ✅ | ✅ |
+| [request/referer](./request/referer/) | 来源页面解析、UTM 参数 | ✅ | ✅ |
+| [request/activity](./request/activity/) | 用户活动追踪（Redis + Kafka） | ✅ | ✅ |
+
+### 存储 (storage/)
 
 | 包 | 说明 | 工厂函数 |
 |---|------|----------|
+| [storage/cache](./storage/cache/) | 缓存（内存、Redis） | `NewCache` / `MustNewCache` |
+| [storage/database](./storage/database/) | 数据库（GORM） | `NewDatabase` / `MustNewDatabase` |
+| [storage/lock](./storage/lock/) | 分布式锁 | `NewLock` |
+
+### 工具 (util/)
+
+| 包 | 说明 |
+|---|------|
+| [util/pagination](./util/pagination/) | 分页工具 |
+| [util/sorting](./util/sorting/) | 排序工具 |
+| [util/collections](./util/collections/) | 集合工具（TreeMap、TreeSet、LinkedList） |
+| [util/pbjson](./util/pbjson/) | Protobuf JSON 序列化（零值字段输出） |
+
+### 核心组件
+
+| 包 | 说明 | 工厂函数 |
+|---|------|----------|
+| [transport](./transport/) | 传输层抽象（Endpoint、Middleware） | - |
+| [auth](./auth/) | 认证授权（JWT、API Key、RBAC） | - |
 | [logger](./logger/) | 结构化日志（Zap） | `NewLogger` / `MustNewLogger` |
 | [config](./config/) | 配置管理（多源、热更新） | `New` |
-| [cache](./cache/) | 缓存（内存、Redis） | `NewCache` / `MustNewCache` |
-| [database](./database/) | 数据库（GORM） | `NewDatabase` / `MustNewDatabase` |
 | [discovery](./discovery/) | 服务发现（Consul、etcd） | `NewDiscovery` / `MustNewDiscovery` |
-| [messaging](./messaging/) | 消息队列（Kafka） | `NewClient` |
+| [messaging](./messaging/) | 消息队列（Kafka、RabbitMQ） | `NewProducer` / `NewConsumer` |
 | [scheduler](./scheduler/) | 定时任务调度 | `NewScheduler` / `MustNewScheduler` |
-| [domain](./domain/) | 领域驱动设计（聚合根、事件） | `NewAggregateRoot` / `NewEventBus` |
-| [cqrs](./cqrs/) | 命令查询职责分离 | `NewCommandBus` / `NewQueryBus` |
-| [pbjson](./pbjson/) | Protobuf JSON 序列化 | `Marshal` / `Unmarshal` |
+
+### 分布式模式
+
+| 包 | 说明 |
+|---|------|
+| [domain](./domain/) | 领域驱动设计（聚合根、领域事件） |
+| [cqrs](./cqrs/) | 命令查询职责分离 |
+| [saga](./saga/) | Saga 分布式事务 |
 
 ## 快速开始
 
@@ -47,11 +89,11 @@ import (
     "context"
     "time"
 
-    "github.com/Tsukikage7/microservice-kit/cache"
     "github.com/Tsukikage7/microservice-kit/config"
-    "github.com/Tsukikage7/microservice-kit/database"
     "github.com/Tsukikage7/microservice-kit/logger"
-    "github.com/Tsukikage7/microservice-kit/metrics"
+    "github.com/Tsukikage7/microservice-kit/observability/metrics"
+    "github.com/Tsukikage7/microservice-kit/storage/cache"
+    "github.com/Tsukikage7/microservice-kit/storage/database"
 )
 
 func main() {
@@ -96,9 +138,9 @@ import (
 
     "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
-    "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/ratelimit"
-    "github.com/Tsukikage7/microservice-kit/tracing"
+    "github.com/Tsukikage7/microservice-kit/middleware/ratelimit"
+    "github.com/Tsukikage7/microservice-kit/observability/metrics"
+    "github.com/Tsukikage7/microservice-kit/observability/tracing"
 )
 
 func main() {
@@ -176,9 +218,9 @@ import (
 
     "github.com/Tsukikage7/microservice-kit/auth/jwt"
     "github.com/Tsukikage7/microservice-kit/logger"
-    "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/ratelimit"
-    "github.com/Tsukikage7/microservice-kit/tracing"
+    "github.com/Tsukikage7/microservice-kit/middleware/ratelimit"
+    "github.com/Tsukikage7/microservice-kit/observability/metrics"
+    "github.com/Tsukikage7/microservice-kit/observability/tracing"
     "google.golang.org/grpc"
 )
 
@@ -238,10 +280,10 @@ Endpoint 中间件用于 `transport.Endpoint` 层，适合服务内部的横切�
 ```go
 import (
     "github.com/Tsukikage7/microservice-kit/transport"
-    "github.com/Tsukikage7/microservice-kit/metrics"
-    "github.com/Tsukikage7/microservice-kit/tracing"
-    "github.com/Tsukikage7/microservice-kit/ratelimit"
-    "github.com/Tsukikage7/microservice-kit/retry"
+    "github.com/Tsukikage7/microservice-kit/observability/metrics"
+    "github.com/Tsukikage7/microservice-kit/observability/tracing"
+    "github.com/Tsukikage7/microservice-kit/middleware/ratelimit"
+    "github.com/Tsukikage7/microservice-kit/middleware/retry"
     "github.com/Tsukikage7/microservice-kit/auth/jwt"
 )
 
@@ -315,6 +357,42 @@ conn, _ := grpc.Dial("localhost:50051",
 )
 ```
 
+### 请求上下文提取中间件
+
+```go
+import (
+    "github.com/Tsukikage7/microservice-kit/request"
+    "github.com/Tsukikage7/microservice-kit/request/clientip"
+)
+
+// 方式 1: 使用组合中间件（默认启用 ClientIP, UserAgent, Locale, Referer）
+handler = request.HTTPMiddleware()(handler)
+
+// 方式 2: 启用所有解析器（包括 Device, Bot）
+handler = request.HTTPMiddleware(request.WithAll())(handler)
+
+// 方式 3: 自定义配置
+handler = request.HTTPMiddleware(
+    request.WithClientIP(clientip.WithTrustedProxies("10.0.0.0/8")),
+    request.WithBot(),
+    request.DisableReferer(),
+)(handler)
+
+// 方式 4: 单独使用子模块
+handler = clientip.HTTPMiddleware()(handler)
+
+// 在 handler 中获取请求信息
+func myHandler(w http.ResponseWriter, r *http.Request) {
+    // 获取聚合信息
+    info := request.FromContext(r.Context())
+
+    // 或单独获取
+    ip, _ := clientip.FromContext(r.Context())
+    ua, _ := useragent.FromContext(r.Context())
+    loc, _ := locale.FromContext(r.Context())
+}
+```
+
 ## 中间件执行顺序
 
 推荐的中间件执行顺序（从外到内）：
@@ -322,9 +400,10 @@ conn, _ := grpc.Dial("localhost:50051",
 1. **Metrics** - 首先记录请求指标
 2. **Tracing** - 创建追踪 span
 3. **RateLimit** - 限流保护
-4. **Auth/JWT** - 认证验证
-5. **Retry** - 重试逻辑（客户端）
-6. **Business Logic** - 业务处理
+4. **Request** - 请求上下文提取（ClientIP, UserAgent 等）
+5. **Auth/JWT** - 认证验证
+6. **Retry** - 重试逻辑（客户端）
+7. **Business Logic** - 业务处理
 
 ## 基础设施组件
 
@@ -454,22 +533,52 @@ defer scheduler.Stop()
 
 ## 各包详细文档
 
+### 可观测性 (observability/)
+- **[observability/metrics](./observability/metrics/)** - Prometheus 指标收集
+- **[observability/tracing](./observability/tracing/)** - OpenTelemetry 链路追踪
+
+### 中间件 (middleware/)
+- **[middleware/ratelimit](./middleware/ratelimit/)** - 限流（令牌桶、滑动窗口、固定窗口、分布式）
+- **[middleware/retry](./middleware/retry/)** - 重试机制（固定/指数/线性退避）
+- **[middleware/recovery](./middleware/recovery/)** - Panic 恢复
+- **[middleware/timeout](./middleware/timeout/)** - 超时控制
+- **[middleware/idempotency](./middleware/idempotency/)** - 幂等性保证
+- **[middleware/semaphore](./middleware/semaphore/)** - 并发控制
+
+### 请求上下文 (request/)
+- **[request](./request/)** - 请求上下文提取组合层
+- **[request/clientip](./request/clientip/)** - 客户端 IP 提取、地理位置、ACL
+- **[request/useragent](./request/useragent/)** - User-Agent 解析
+- **[request/deviceinfo](./request/deviceinfo/)** - 设备信息（Client Hints 优先）
+- **[request/botdetect](./request/botdetect/)** - 机器人检测
+- **[request/locale](./request/locale/)** - 语言区域设置
+- **[request/referer](./request/referer/)** - 来源页面解析、UTM 参数
+- **[request/activity](./request/activity/)** - 用户活动追踪
+
+### 存储 (storage/)
+- **[storage/cache](./storage/cache/)** - 缓存（内存、Redis）
+- **[storage/database](./storage/database/)** - 数据库（GORM）
+- **[storage/lock](./storage/lock/)** - 分布式锁
+
+### 工具 (util/)
+- **[util/pagination](./util/pagination/)** - 分页工具
+- **[util/sorting](./util/sorting/)** - 排序工具
+- **[util/collections](./util/collections/)** - 集合工具（TreeMap、TreeSet、LinkedList）
+- **[util/pbjson](./util/pbjson/)** - Protobuf JSON 序列化（零值字段输出）
+
+### 核心组件
 - **[transport](./transport/)** - 传输层抽象，定义 Endpoint 和 Middleware
-- **[metrics](./metrics/)** - Prometheus 指标收集
-- **[tracing](./tracing/)** - OpenTelemetry 链路追踪
-- **[ratelimit](./ratelimit/)** - 限流（令牌桶、滑动窗口、固定窗口、分布式）
-- **[retry](./retry/)** - 重试机制（固定/指数/线性退避）
-- **[jwt](./jwt/)** - JWT 认证
+- **[auth](./auth/)** - 认证授权（JWT、API Key、RBAC）
 - **[logger](./logger/)** - 结构化日志
 - **[config](./config/)** - 配置管理
-- **[cache](./cache/)** - 缓存（内存、Redis）
-- **[database](./database/)** - 数据库（GORM）
 - **[discovery](./discovery/)** - 服务发现（Consul、etcd）
 - **[messaging](./messaging/)** - 消息队列（Kafka）
 - **[scheduler](./scheduler/)** - 定时任务调度
+
+### 分布式模式
 - **[domain](./domain/)** - 领域驱动设计（聚合根、领域事件）
 - **[cqrs](./cqrs/)** - 命令查询职责分离
-- **[pbjson](./pbjson/)** - Protobuf JSON 序列化（零值字段输出）
+- **[saga](./saga/)** - Saga 分布式事务
 
 ## 设计原则
 

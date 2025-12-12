@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/storage/cache"
 )
 
 // Distributed 分布式信号量.

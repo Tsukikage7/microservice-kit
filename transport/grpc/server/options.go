@@ -8,9 +8,9 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
-	"github.com/Tsukikage7/microservice-kit/clientip"
+	"github.com/Tsukikage7/microservice-kit/request/clientip"
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/tracing"
+	"github.com/Tsukikage7/microservice-kit/observability/tracing"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 )

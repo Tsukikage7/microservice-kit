@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/storage/cache"
 )
 
 // IdempotentStore 幂等性存储实现.

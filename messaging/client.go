@@ -8,7 +8,7 @@ import (
 	"github.com/IBM/sarama"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/metrics"
+	"github.com/Tsukikage7/microservice-kit/observability/metrics"
 )
 
 // Client 消息队列客户端.

@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
-	"github.com/Tsukikage7/microservice-kit/clientip"
+	"github.com/Tsukikage7/microservice-kit/request/clientip"
 )
 
 // HTTPMiddleware 返回 HTTP 中间件，自动追踪用户活跃.
@@ -44,9 +44,9 @@ func HTTPMiddleware(tracker *Tracker, opts ...MiddlewareOption) func(http.Handle
 			if tracker.opts.extractor != nil {
 				userID = tracker.opts.extractor(r.Context())
 			} else {
-				// 默认从 auth claims 提取
-				if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-					userID = claims.Subject
+				// 默认从 auth principal 提取
+				if principal, ok := auth.FromContext(r.Context()); ok {
+					userID = principal.ID
 				}
 			}
 

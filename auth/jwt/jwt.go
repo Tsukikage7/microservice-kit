@@ -30,7 +30,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/Tsukikage7/microservice-kit/cache"
+	"github.com/Tsukikage7/microservice-kit/storage/cache"
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
 

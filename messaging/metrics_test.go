@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/metrics"
+	"github.com/Tsukikage7/microservice-kit/observability/metrics"
 )
 
 func TestMessagingMetrics_RecordSend(t *testing.T) {

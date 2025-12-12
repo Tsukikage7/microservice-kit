@@ -3,7 +3,7 @@ package scheduler
 import (
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/lock"
+	"github.com/Tsukikage7/microservice-kit/storage/lock"
 	"github.com/Tsukikage7/microservice-kit/logger"
 )
 

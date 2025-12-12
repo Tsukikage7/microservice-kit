@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
-	"github.com/Tsukikage7/microservice-kit/clientip"
+	"github.com/Tsukikage7/microservice-kit/request/clientip"
 )
 
 // UnaryServerInterceptor 返回一元 gRPC 拦截器，自动追踪用户活跃.
@@ -40,8 +40,9 @@ func UnaryServerInterceptor(tracker *Tracker, opts ...GRPCInterceptorOption) grp
 		if tracker.opts.extractor != nil {
 			userID = tracker.opts.extractor(ctx)
 		} else {
-			if claims, ok := auth.ClaimsFromContext(ctx); ok {
-				userID = claims.Subject
+			// 默认从 auth principal 提取
+			if principal, ok := auth.FromContext(ctx); ok {
+				userID = principal.ID
 			}
 		}
 
@@ -91,8 +92,9 @@ func StreamServerInterceptor(tracker *Tracker, opts ...GRPCInterceptorOption) gr
 		if tracker.opts.extractor != nil {
 			userID = tracker.opts.extractor(ctx)
 		} else {
-			if claims, ok := auth.ClaimsFromContext(ctx); ok {
-				userID = claims.Subject
+			// 默认从 auth principal 提取
+			if principal, ok := auth.FromContext(ctx); ok {
+				userID = principal.ID
 			}
 		}
 
