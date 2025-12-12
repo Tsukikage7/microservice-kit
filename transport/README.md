@@ -41,8 +41,8 @@ func main() {
 
     // 创建 HTTP 服务器
     httpSrv := httpserver.New(mux,
-        httpserver.WithAddr(":8080"),
-        httpserver.WithLogger(log),
+        httpserver.Addr(":8080"),
+        httpserver.Logger(log),
     )
 
     // 创建 gRPC 服务器
@@ -123,8 +123,8 @@ app := transport.NewApplication(
 
 // 使用配置创建服务器
 httpSrv := httpserver.New(mux,
-    httpserver.WithConfig(cfg.HTTP),
-    httpserver.WithLogger(log),
+    httpserver.Logger(log),
+    httpserver.Addr(cfg.HTTP.Addr),
 )
 grpcSrv := grpcserver.New(
     grpcserver.WithConfig(cfg.GRPC),
@@ -276,8 +276,8 @@ mux := http.NewServeMux()
 mux.HandleFunc("/health", healthHandler)
 
 srv := httpserver.New(mux,
-    httpserver.WithAddr(":8080"),
-    httpserver.WithLogger(log),
+    httpserver.Addr(":8080"),
+    httpserver.Logger(log),
 )
 
 // 单独启动
@@ -290,14 +290,15 @@ if err := srv.Start(ctx); err != nil {
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
-| `WithName` | `HTTP` | 服务器名称 |
-| `WithAddr` | `:8080` | 监听地址 |
-| `WithLogger` | - | 日志实例（必需） |
-| `WithReadTimeout` | `30s` | 读取超时 |
-| `WithWriteTimeout` | `30s` | 写入超时 |
-| `WithIdleTimeout` | `120s` | 空闲超时 |
-| `WithTrace` | - | 启用链路追踪 |
-| `WithRecovery` | - | 启用 panic 恢复 |
+| `Name` | `HTTP` | 服务器名称 |
+| `Addr` | `:8080` | 监听地址 |
+| `Logger` | - | 日志实例（必需） |
+| `Timeout` | `30s/30s/120s` | 超时设置(read/write/idle) |
+| `Trace` | - | 启用链路追踪 |
+| `Recovery` | - | 启用 panic 恢复 |
+| `Feature` | - | 特性开关管理器 |
+| `Auth` | - | 认证器 |
+| `Profiling` | - | pprof 端点 |
 
 ## 可观测性
 
@@ -316,8 +317,8 @@ defer tp.Shutdown(ctx)
 
 // 2. 启用服务器链路追踪
 httpSrv := httpserver.New(mux,
-    httpserver.WithLogger(log),
-    httpserver.WithTrace("my-service"),  // 启用 HTTP 追踪
+    httpserver.Logger(log),
+    httpserver.Trace("my-service"),  // 启用 HTTP 追踪
 )
 
 grpcSrv := grpcserver.New(
@@ -333,8 +334,8 @@ grpcSrv := grpcserver.New(
 ```go
 // HTTP 服务器
 httpSrv := httpserver.New(mux,
-    httpserver.WithLogger(log),
-    httpserver.WithRecovery(),  // 启用 panic 恢复
+    httpserver.Logger(log),
+    httpserver.Recovery(),  // 启用 panic 恢复
 )
 
 // gRPC 服务器
@@ -366,9 +367,9 @@ grpcSrv := grpcserver.New(
 
 ```go
 httpSrv := httpserver.New(mux,
-    httpserver.WithLogger(log),
-    httpserver.WithTrace("my-service"),
-    httpserver.WithRecovery(),
+    httpserver.Logger(log),
+    httpserver.Trace("my-service"),
+    httpserver.Recovery(),
 )
 
 grpcSrv := grpcserver.New(

@@ -58,6 +58,14 @@ go get github.com/Tsukikage7/microservice-kit
 | [storage/s3](./storage/s3/) | S3 兼容对象存储 | `NewClient` / `MustNewClient` |
 | [storage/lock](./storage/lock/) | 分布式锁 | `NewLock` |
 
+### 运维
+
+| 包 | 说明 |
+|---|------|
+| [transport/health](./transport/health/) | 健康检查（K8s 探针） |
+| [transport](./transport/) | 优雅关闭（集成在 Application 中） |
+| HTTP Server | 性能分析（通过 `Profiling()` 选项启用 pprof） |
+
 ### 工具 (util/)
 
 | 包 | 说明 |
@@ -88,6 +96,51 @@ go get github.com/Tsukikage7/microservice-kit
 | [saga](./saga/) | Saga 分布式事务 |
 
 ## 快速开始
+
+### 完整服务示例
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "time"
+
+    "github.com/Tsukikage7/microservice-kit/logger"
+    "github.com/Tsukikage7/microservice-kit/transport"
+    httpserver "github.com/Tsukikage7/microservice-kit/transport/http/server"
+)
+
+func main() {
+    log := logger.MustNewLogger(logger.DefaultConfig())
+
+    // 1. 创建路由
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/v1/users", func(w http.ResponseWriter, _ *http.Request) {
+        fmt.Fprintln(w, `{"message": "hello"}`)
+    })
+
+    // 2. 创建 HTTP 服务器（内置健康检查、pprof）
+    srv := httpserver.New(mux,
+        httpserver.Logger(log),
+        httpserver.Addr(":8080"),
+        httpserver.Recovery(),
+        httpserver.Profiling("/debug/pprof"),
+    )
+
+    // 3. 启动应用（自动处理信号、优雅关闭）
+    app := transport.NewApplication(
+        transport.WithLogger(log),
+        transport.WithGracefulTimeout(30*time.Second),
+        transport.WithCleanup("logs", func(_ context.Context) error {
+            return log.Sync()
+        }, 100),
+    )
+    app.Use(srv).Run()
+}
+```
 
 ### 基础组件初始化
 
@@ -633,6 +686,47 @@ scheduler.Start()
 defer scheduler.Stop()
 ```
 
+### 优雅关闭（集成在 Application 中）
+
+```go
+import "github.com/Tsukikage7/microservice-kit/transport"
+
+app := transport.NewApplication(
+    transport.WithLogger(log),
+    transport.WithGracefulTimeout(30*time.Second),
+    // 注册清理任务（按优先级执行，数字越小越先执行）
+    transport.WithCleanup("database", db.Close, 10),
+    transport.WithCloser("cache", cache, 10),
+    transport.WithCleanup("logger", func(ctx context.Context) error {
+        return log.Sync()
+    }, 100),
+)
+
+// 使用服务器并运行（自动处理 SIGTERM、SIGINT 信号）
+app.Use(httpServer, grpcServer).Run()
+```
+
+### Profiling - 性能分析
+
+通过 HTTP Server 的 `Profiling()` 选项启用 pprof：
+
+```go
+import httpserver "github.com/Tsukikage7/microservice-kit/transport/http/server"
+
+srv := httpserver.New(mux,
+    httpserver.Logger(log),
+    httpserver.Addr(":8080"),
+    httpserver.Profiling("/debug/pprof"),                    // 公开访问
+    // httpserver.ProfilingWithAuth("/debug/pprof", authFn), // 带认证
+)
+
+// 访问端点:
+// - /debug/pprof/          - 索引页面
+// - /debug/pprof/heap      - 堆内存分析
+// - /debug/pprof/goroutine - Goroutine 分析
+// - /debug/pprof/profile   - CPU 分析（需要 ?seconds=30）
+```
+
 ## 工厂函数命名规范
 
 本工具包遵循统一的工厂函数命名规范：
@@ -677,6 +771,11 @@ defer scheduler.Stop()
 - **[storage/mongodb](./storage/mongodb/)** - MongoDB（CRUD、事务、索引）
 - **[storage/s3](./storage/s3/)** - S3 兼容存储（分片上传、预签名 URL）
 - **[storage/lock](./storage/lock/)** - 分布式锁
+
+### 运维
+- **[transport/health](./transport/health/)** - 健康检查（存活/就绪探针、组合检查器）
+- **[transport](./transport/)** - 优雅关闭（集成在 Application 中，信号处理、优先级排序）
+- **HTTP Server** - 性能分析（通过 `Profiling()` 选项启用 pprof）
 
 ### 工具 (util/)
 - **[util/pagination](./util/pagination/)** - 分页工具

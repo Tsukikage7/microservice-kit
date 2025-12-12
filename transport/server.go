@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -67,6 +68,16 @@ type GatewayConfig struct {
 // AppOption App 配置选项.
 type AppOption func(*appOptions)
 
+// CleanupFunc 清理函数.
+type CleanupFunc func(ctx context.Context) error
+
+// Cleanup 清理任务.
+type Cleanup struct {
+	Name     string
+	Fn       CleanupFunc
+	Priority int // 优先级，数字越小越先执行
+}
+
 // appOptions App 内部配置.
 type appOptions struct {
 	name            string
@@ -75,6 +86,7 @@ type appOptions struct {
 	hooks           *Hooks
 	gracefulTimeout time.Duration
 	signals         []os.Signal
+	cleanups        []Cleanup
 }
 
 // defaultAppOptions 返回默认配置.
@@ -146,6 +158,35 @@ func WithConfig(cfg ApplicationConfig) AppOption {
 			o.gracefulTimeout = cfg.GracefulTimeout
 		}
 	}
+}
+
+// WithCleanup 注册清理任务.
+//
+// 清理任务在所有服务器停止后按优先级执行（数字越小越先执行）.
+// 典型用途: 关闭数据库连接、Redis 连接、刷新日志缓冲等.
+//
+// 示例:
+//
+//	app := transport.NewApplication(
+//	    transport.WithCleanup("database", db.Close, 10),
+//	    transport.WithCleanup("redis", redis.Close, 10),
+//	    transport.WithCleanup("logger", logger.Sync, 100),
+//	)
+func WithCleanup(name string, fn CleanupFunc, priority int) AppOption {
+	return func(o *appOptions) {
+		o.cleanups = append(o.cleanups, Cleanup{
+			Name:     name,
+			Fn:       fn,
+			Priority: priority,
+		})
+	}
+}
+
+// WithCloser 注册 io.Closer 作为清理任务（便捷方法）.
+func WithCloser(name string, closer interface{ Close() error }, priority int) AppOption {
+	return WithCleanup(name, func(_ context.Context) error {
+		return closer.Close()
+	}, priority)
 }
 
 // Application 应用程序，管理多个服务器的生命周期.
@@ -357,8 +398,11 @@ func (a *Application) shutdown() error {
 	case <-done:
 		a.opts.logger.With(logger.String("name", a.opts.name)).Info("[App] 所有服务器已停止")
 	case <-shutdownCtx.Done():
-		a.opts.logger.With(logger.String("name", a.opts.name)).Warn("[App] 关闭超时，强制退出")
+		a.opts.logger.With(logger.String("name", a.opts.name)).Warn("[App] 服务器关闭超时")
 	}
+
+	// 执行清理任务（按优先级）
+	a.runCleanups(shutdownCtx)
 
 	// 执行停止后钩子
 	if err := a.opts.hooks.runAfterStop(context.Background()); err != nil {
@@ -374,4 +418,38 @@ func (a *Application) shutdown() error {
 
 	a.opts.logger.With(logger.String("name", a.opts.name)).Info("[App] 应用已关闭")
 	return nil
+}
+
+// runCleanups 按优先级执行清理任务.
+func (a *Application) runCleanups(ctx context.Context) {
+	if len(a.opts.cleanups) == 0 {
+		return
+	}
+
+	// 复制并按优先级排序
+	cleanups := make([]Cleanup, len(a.opts.cleanups))
+	copy(cleanups, a.opts.cleanups)
+	sort.Slice(cleanups, func(i, j int) bool {
+		return cleanups[i].Priority < cleanups[j].Priority
+	})
+
+	a.opts.logger.With(
+		logger.String("name", a.opts.name),
+		logger.Int("count", len(cleanups)),
+	).Info("[App] 执行清理任务")
+
+	for _, c := range cleanups {
+		if err := c.Fn(ctx); err != nil {
+			a.opts.logger.With(
+				logger.String("name", a.opts.name),
+				logger.String("cleanup", c.Name),
+				logger.Err(err),
+			).Error("[App] 清理任务失败")
+		} else {
+			a.opts.logger.With(
+				logger.String("name", a.opts.name),
+				logger.String("cleanup", c.Name),
+			).Info("[App] 清理任务完成")
+		}
+	}
 }

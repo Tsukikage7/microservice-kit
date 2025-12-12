@@ -44,9 +44,9 @@ func TestNew(t *testing.T) {
 
 	t.Run("创建成功", func(t *testing.T) {
 		srv := New(mux,
-			WithName("test-http"),
-			WithAddr(":8080"),
-			WithLogger(&mockLogger{}),
+			Name("test-http"),
+			Addr(":8080"),
+			Logger(&mockLogger{}),
 		)
 
 		if srv.Name() != "test-http" {
@@ -71,11 +71,11 @@ func TestNew(t *testing.T) {
 				t.Error("expected panic when logger not set")
 			}
 		}()
-		New(mux, WithAddr(":8080"))
+		New(mux, Addr(":8080"))
 	})
 
 	t.Run("默认值", func(t *testing.T) {
-		srv := New(mux, WithLogger(&mockLogger{}))
+		srv := New(mux, Logger(&mockLogger{}))
 
 		if srv.Name() != "HTTP" {
 			t.Errorf("expected default name 'HTTP', got '%s'", srv.Name())
@@ -94,8 +94,8 @@ func TestServer_StartAndStop(t *testing.T) {
 	})
 
 	srv := New(mux,
-		WithAddr(addr),
-		WithLogger(&mockLogger{}),
+		Addr(addr),
+		Logger(&mockLogger{}),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -141,7 +141,7 @@ func TestServer_StartAndStop(t *testing.T) {
 
 func TestServer_StopNotStarted(t *testing.T) {
 	mux := http.NewServeMux()
-	srv := New(mux, WithLogger(&mockLogger{}))
+	srv := New(mux, Logger(&mockLogger{}))
 
 	err := srv.Stop(context.Background())
 	if err != nil {
@@ -152,30 +152,30 @@ func TestServer_StopNotStarted(t *testing.T) {
 func TestServerOptions(t *testing.T) {
 	mux := http.NewServeMux()
 
-	t.Run("WithReadTimeout", func(t *testing.T) {
+	t.Run("ReadTimeout", func(t *testing.T) {
 		srv := New(mux,
-			WithLogger(&mockLogger{}),
-			WithReadTimeout(10*time.Second),
+			Logger(&mockLogger{}),
+			Timeout(10*time.Second, 0, 0),
 		)
 		if srv.opts.readTimeout != 10*time.Second {
 			t.Error("read timeout not set correctly")
 		}
 	})
 
-	t.Run("WithWriteTimeout", func(t *testing.T) {
+	t.Run("WriteTimeout", func(t *testing.T) {
 		srv := New(mux,
-			WithLogger(&mockLogger{}),
-			WithWriteTimeout(15*time.Second),
+			Logger(&mockLogger{}),
+			Timeout(0, 15*time.Second, 0),
 		)
 		if srv.opts.writeTimeout != 15*time.Second {
 			t.Error("write timeout not set correctly")
 		}
 	})
 
-	t.Run("WithIdleTimeout", func(t *testing.T) {
+	t.Run("IdleTimeout", func(t *testing.T) {
 		srv := New(mux,
-			WithLogger(&mockLogger{}),
-			WithIdleTimeout(60*time.Second),
+			Logger(&mockLogger{}),
+			Timeout(0, 0, 60*time.Second),
 		)
 		if srv.opts.idleTimeout != 60*time.Second {
 			t.Error("idle timeout not set correctly")
@@ -183,7 +183,7 @@ func TestServerOptions(t *testing.T) {
 	})
 
 	t.Run("默认超时值", func(t *testing.T) {
-		srv := New(mux, WithLogger(&mockLogger{}))
+		srv := New(mux, Logger(&mockLogger{}))
 
 		if srv.opts.readTimeout != 30*time.Second {
 			t.Errorf("expected default read timeout 30s, got %v", srv.opts.readTimeout)

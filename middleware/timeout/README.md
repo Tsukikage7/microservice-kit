@@ -147,8 +147,8 @@ endpoint = timeout.EndpointMiddleware(5*time.Second,
 // 根据 SLA 设置超时
 // 一般建议：超时 = P99 延迟 * 2
 httpSrv := httpserver.New(mux,
-    httpserver.WithReadTimeout(30*time.Second),
-    httpserver.WithWriteTimeout(30*time.Second),
+    httpserver.Logger(log),
+    httpserver.Timeout(30*time.Second, 30*time.Second, 0),
 )
 
 // 为特定端点设置更短的超时
@@ -225,9 +225,8 @@ func (s *Service) LongRunningTask(ctx context.Context, req *Request) (*Response,
 ```go
 // HTTP 服务器
 httpSrv := httpserver.New(mux,
-    httpserver.WithLogger(log),
-    httpserver.WithReadTimeout(30*time.Second),  // 读取超时
-    httpserver.WithWriteTimeout(30*time.Second), // 写入超时
+    httpserver.Logger(log),
+    httpserver.Timeout(30*time.Second, 30*time.Second, 0),  // read/write/idle 超时
 )
 
 // gRPC 服务器

@@ -4,13 +4,15 @@ package server
 import (
 	"context"
 	"net/http"
+	"net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/auth"
-	"github.com/Tsukikage7/microservice-kit/request/clientip"
 	"github.com/Tsukikage7/microservice-kit/logger"
 	"github.com/Tsukikage7/microservice-kit/middleware/recovery"
 	"github.com/Tsukikage7/microservice-kit/observability/tracing"
+	"github.com/Tsukikage7/microservice-kit/request/clientip"
 	"github.com/Tsukikage7/microservice-kit/transport"
 	"github.com/Tsukikage7/microservice-kit/transport/health"
 )
@@ -20,12 +22,21 @@ type Server struct {
 	opts    *options
 	handler http.Handler
 	server  *http.Server
-
-	// 内置健康检查
-	health *health.Health
+	health  *health.Health
 }
 
-// New 创建 HTTP 服务器，如果未设置 logger 会 panic.
+// New 创建 HTTP 服务器.
+//
+// 示例:
+//
+//	server := httpserver.New(mux,
+//	    httpserver.Logger(log),
+//	    httpserver.Addr(":8080"),
+//	    httpserver.Feature(fm),
+//	    httpserver.Auth(authenticator, "/api/login", "/api/register"),
+//	    httpserver.Recovery(),
+//	    httpserver.Profiling("/debug/pprof"),
+//	)
 func New(handler http.Handler, opts ...Option) *Server {
 	o := defaultOptions()
 	for _, opt := range opts {
@@ -33,46 +44,81 @@ func New(handler http.Handler, opts ...Option) *Server {
 	}
 
 	if o.logger == nil {
-		panic("http server: 必须设置 logger")
+		panic("http server: logger is required")
 	}
 
-	// 创建内置健康检查管理器
+	// 创建健康检查
 	healthOpts := []health.Option{health.WithTimeout(o.healthTimeout)}
 	healthOpts = append(healthOpts, o.healthOptions...)
 	h := health.New(healthOpts...)
 
-	// 使用健康检查中间件包装 handler
-	wrappedHandler := health.Middleware(h)(handler)
+	// 中间件包装（由内到外）
+	wrapped := health.Middleware(h)(handler)
 
-	// 如果启用客户端 IP 提取，使用 clientip 中间件包装
-	if o.enableClientIP {
-		wrappedHandler = clientip.HTTPMiddleware(o.clientIPOptions...)(wrappedHandler)
+	if o.clientIP {
+		wrapped = clientip.HTTPMiddleware(o.clientIPOpts...)(wrapped)
 	}
 
-	// 如果启用认证，使用 auth 中间件包装
 	if o.authenticator != nil {
-		authOpts := buildAuthOptions(o)
-		wrappedHandler = auth.HTTPMiddleware(o.authenticator, authOpts...)(wrappedHandler)
+		wrapped = auth.HTTPMiddleware(o.authenticator, o.authOpts...)(wrapped)
 	}
 
-	// 如果启用链路追踪，使用 trace 中间件包装
-	if o.tracerName != "" {
-		wrappedHandler = tracing.HTTPMiddleware(o.tracerName)(wrappedHandler)
+	if o.traceName != "" {
+		wrapped = tracing.HTTPMiddleware(o.traceName)(wrapped)
 	}
 
-	// 如果启用 panic 恢复，使用 recovery 中间件包装（在最外层）
-	if o.enableRecovery {
-		wrappedHandler = recovery.HTTPMiddleware(recovery.WithLogger(o.logger))(wrappedHandler)
+	if o.recovery {
+		wrapped = recovery.HTTPMiddleware(recovery.WithLogger(o.logger))(wrapped)
 	}
 
-	return &Server{
-		opts:    o,
-		handler: wrappedHandler,
-		health:  h,
+	if o.profiling != "" {
+		wrapped = wrapProfiling(wrapped, o.profiling, o.profilingAuth)
 	}
+
+	return &Server{opts: o, handler: wrapped, health: h}
 }
 
-// Start 启动 HTTP 服务器.
+func wrapProfiling(next http.Handler, prefix string, authFn func(*http.Request) bool) http.Handler {
+	prefix = strings.TrimSuffix(prefix, "/")
+	mux := http.NewServeMux()
+
+	// 认证包装器
+	wrap := func(h http.HandlerFunc) http.HandlerFunc {
+		if authFn == nil {
+			return h
+		}
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !authFn(r) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+		}
+	}
+
+	// 注册 pprof 端点
+	mux.HandleFunc(prefix+"/", wrap(pprof.Index))
+	mux.HandleFunc(prefix+"/cmdline", wrap(pprof.Cmdline))
+	mux.HandleFunc(prefix+"/profile", wrap(pprof.Profile))
+	mux.HandleFunc(prefix+"/symbol", wrap(pprof.Symbol))
+	mux.HandleFunc(prefix+"/trace", wrap(pprof.Trace))
+	mux.HandleFunc(prefix+"/heap", wrap(func(w http.ResponseWriter, r *http.Request) {
+		pprof.Handler("heap").ServeHTTP(w, r)
+	}))
+	mux.HandleFunc(prefix+"/goroutine", wrap(func(w http.ResponseWriter, r *http.Request) {
+		pprof.Handler("goroutine").ServeHTTP(w, r)
+	}))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Start 启动服务器.
 func (s *Server) Start(ctx context.Context) error {
 	s.server = &http.Server{
 		Addr:         s.opts.addr,
@@ -88,9 +134,7 @@ func (s *Server) Start(ctx context.Context) error {
 	).Info("[HTTP] 服务器启动")
 
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- s.server.ListenAndServe()
-	}()
+	go func() { errCh <- s.server.ListenAndServe() }()
 
 	select {
 	case err := <-errCh:
@@ -98,43 +142,24 @@ func (s *Server) Start(ctx context.Context) error {
 			return err
 		}
 	case <-ctx.Done():
-		// 上下文取消，正常退出
 	}
-
 	return nil
 }
 
-// Stop 停止 HTTP 服务器.
+// Stop 停止服务器.
 func (s *Server) Stop(ctx context.Context) error {
 	if s.server == nil {
 		return nil
 	}
-
-	s.opts.logger.With(logger.String("name", s.opts.name)).Info("[HTTP] 服务器停止中")
+	s.opts.logger.With(logger.String("name", s.opts.name)).Info("[HTTP] 服务器停止")
 	return s.server.Shutdown(ctx)
 }
 
-// Name 返回服务器名称.
-func (s *Server) Name() string {
-	return s.opts.name
-}
+func (s *Server) Name() string          { return s.opts.name }
+func (s *Server) Addr() string          { return s.opts.addr }
+func (s *Server) Handler() http.Handler { return s.handler }
+func (s *Server) Health() *health.Health { return s.health }
 
-// Addr 返回服务器地址.
-func (s *Server) Addr() string {
-	return s.opts.addr
-}
-
-// Handler 返回 HTTP Handler.
-func (s *Server) Handler() http.Handler {
-	return s.handler
-}
-
-// Health 返回健康检查管理器.
-func (s *Server) Health() *health.Health {
-	return s.health
-}
-
-// HealthEndpoint 返回健康检查端点信息.
 func (s *Server) HealthEndpoint() *transport.HealthEndpoint {
 	return &transport.HealthEndpoint{
 		Type: transport.HealthCheckTypeHTTP,
@@ -143,33 +168,33 @@ func (s *Server) HealthEndpoint() *transport.HealthEndpoint {
 	}
 }
 
-// Option 配置选项函数.
+// ==================== Options ====================
+
 type Option func(*options)
 
-// options 服务器配置.
 type options struct {
-	name           string
-	addr           string
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	idleTimeout    time.Duration
-	logger         logger.Logger
-	healthTimeout  time.Duration
-	healthOptions  []health.Option
-	tracerName     string // 链路追踪服务名，为空则不启用
-	enableRecovery bool   // 是否启用 panic 恢复
+	name         string
+	addr         string
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
+	logger       logger.Logger
 
-	// Auth
+	// Health
+	healthTimeout time.Duration
+	healthOptions []health.Option
+
+	// Middleware
+	recovery      bool
+	traceName     string
+	clientIP      bool
+	clientIPOpts  []clientip.Option
 	authenticator auth.Authenticator
-	authOptions   []auth.Option
-	publicPaths   []string // 公开路径（无需认证）
-
-	// ClientIP
-	enableClientIP   bool
-	clientIPOptions  []clientip.Option
+	authOpts      []auth.Option
+	profiling     string
+	profilingAuth func(*http.Request) bool
 }
 
-// defaultOptions 返回默认配置.
 func defaultOptions() *options {
 	return &options{
 		name:          "HTTP",
@@ -181,174 +206,108 @@ func defaultOptions() *options {
 	}
 }
 
-// WithName 设置服务器名称.
-func WithName(name string) Option {
-	return func(o *options) {
-		o.name = name
-	}
+// Logger 设置日志记录器（必需）.
+func Logger(l logger.Logger) Option {
+	return func(o *options) { o.logger = l }
 }
 
-// WithAddr 设置监听地址.
-func WithAddr(addr string) Option {
-	return func(o *options) {
-		o.addr = addr
-	}
+// Name 设置服务器名称.
+func Name(name string) Option {
+	return func(o *options) { o.name = name }
 }
 
-// WithReadTimeout 设置读取超时.
-func WithReadTimeout(d time.Duration) Option {
-	return func(o *options) {
-		o.readTimeout = d
-	}
+// Addr 设置监听地址.
+func Addr(addr string) Option {
+	return func(o *options) { o.addr = addr }
 }
 
-// WithWriteTimeout 设置写入超时.
-func WithWriteTimeout(d time.Duration) Option {
+// Timeout 设置超时时间.
+func Timeout(read, write, idle time.Duration) Option {
 	return func(o *options) {
-		o.writeTimeout = d
-	}
-}
-
-// WithIdleTimeout 设置空闲超时.
-func WithIdleTimeout(d time.Duration) Option {
-	return func(o *options) {
-		o.idleTimeout = d
-	}
-}
-
-// WithConfig 从配置结构体设置服务器选项.
-// 仅设置非零值字段，零值字段将保持默认值.
-func WithConfig(cfg transport.HTTPConfig) Option {
-	return func(o *options) {
-		if cfg.Name != "" {
-			o.name = cfg.Name
+		if read > 0 {
+			o.readTimeout = read
 		}
-		if cfg.Addr != "" {
-			o.addr = cfg.Addr
+		if write > 0 {
+			o.writeTimeout = write
 		}
-		if cfg.ReadTimeout > 0 {
-			o.readTimeout = cfg.ReadTimeout
-		}
-		if cfg.WriteTimeout > 0 {
-			o.writeTimeout = cfg.WriteTimeout
-		}
-		if cfg.IdleTimeout > 0 {
-			o.idleTimeout = cfg.IdleTimeout
-		}
-		if len(cfg.PublicPaths) > 0 {
-			o.publicPaths = cfg.PublicPaths
+		if idle > 0 {
+			o.idleTimeout = idle
 		}
 	}
 }
 
-// WithLogger 设置日志记录器（必需）.
-func WithLogger(log logger.Logger) Option {
+// Recovery 启用 panic 恢复.
+func Recovery() Option {
+	return func(o *options) { o.recovery = true }
+}
+
+// Trace 启用链路追踪.
+func Trace(serviceName string) Option {
+	return func(o *options) { o.traceName = serviceName }
+}
+
+// ClientIP 启用客户端 IP 提取.
+func ClientIP(opts ...clientip.Option) Option {
 	return func(o *options) {
-		o.logger = log
+		o.clientIP = true
+		o.clientIPOpts = opts
 	}
 }
 
-// WithHealthTimeout 设置健康检查超时时间.
-func WithHealthTimeout(d time.Duration) Option {
+// Auth 启用认证，可选指定公开路径.
+//
+// 示例:
+//
+//	httpserver.Auth(authenticator)                           // 所有路径都需认证
+//	httpserver.Auth(authenticator, "/login", "/register")    // 指定公开路径
+//	httpserver.Auth(authenticator, "/api/public/*")          // 前缀匹配
+func Auth(authenticator auth.Authenticator, publicPaths ...string) Option {
 	return func(o *options) {
-		o.healthTimeout = d
+		o.authenticator = authenticator
+		if o.logger != nil {
+			o.authOpts = append(o.authOpts, auth.WithLogger(o.logger))
+		}
+		if len(publicPaths) > 0 {
+			o.authOpts = append(o.authOpts, auth.WithSkipper(buildPathSkipper(publicPaths)))
+		}
 	}
 }
 
-// WithHealthOptions 添加健康检查选项.
-func WithHealthOptions(opts ...health.Option) Option {
+// Profiling 启用 pprof 端点.
+//
+// 示例:
+//
+//	httpserver.Profiling("/debug/pprof")
+func Profiling(pathPrefix string) Option {
+	return func(o *options) { o.profiling = pathPrefix }
+}
+
+// ProfilingWithAuth 启用带认证的 pprof 端点.
+func ProfilingWithAuth(pathPrefix string, authFn func(*http.Request) bool) Option {
 	return func(o *options) {
-		o.healthOptions = append(o.healthOptions, opts...)
+		o.profiling = pathPrefix
+		o.profilingAuth = authFn
 	}
 }
 
-// WithReadinessChecker 添加就绪检查器（便捷方法）.
-func WithReadinessChecker(checkers ...health.Checker) Option {
+// HealthTimeout 设置健康检查超时.
+func HealthTimeout(d time.Duration) Option {
+	return func(o *options) { o.healthTimeout = d }
+}
+
+// HealthChecker 添加健康检查器.
+func HealthChecker(checkers ...health.Checker) Option {
 	return func(o *options) {
 		o.healthOptions = append(o.healthOptions, health.WithReadinessChecker(checkers...))
 	}
 }
 
-// WithLivenessChecker 添加存活检查器（便捷方法）.
-func WithLivenessChecker(checkers ...health.Checker) Option {
-	return func(o *options) {
-		o.healthOptions = append(o.healthOptions, health.WithLivenessChecker(checkers...))
-	}
-}
-
-// WithTrace 启用链路追踪.
-//
-// 注意: 需要先调用 tracing.NewTracer() 初始化全局 TracerProvider.
-func WithTrace(serviceName string) Option {
-	return func(o *options) {
-		o.tracerName = serviceName
-	}
-}
-
-// WithRecovery 启用 panic 恢复.
-//
-// 启用后，handler 中的 panic 会被捕获并记录，返回 500 状态码.
-func WithRecovery() Option {
-	return func(o *options) {
-		o.enableRecovery = true
-	}
-}
-
-// WithAuth 启用认证.
-//
-// 示例:
-//
-//	jwtService := jwt.NewJWT(jwt.WithSecretKey("secret"))
-//	authenticator := jwt.NewAuthenticator(jwtService)
-//
-//	server := httpserver.New(handler,
-//	    httpserver.WithAuth(authenticator),
-//	    httpserver.WithPublicPaths("/api/login", "/api/register"),
-//	)
-func WithAuth(authenticator auth.Authenticator, opts ...auth.Option) Option {
-	return func(o *options) {
-		o.authenticator = authenticator
-		o.authOptions = opts
-	}
-}
-
-// WithPublicPaths 设置公开路径（无需认证）.
-//
-// 路径格式:
-//   - "/api/login" (精确匹配)
-//   - "/api/public/*" (前缀匹配)
-func WithPublicPaths(paths ...string) Option {
-	return func(o *options) {
-		o.publicPaths = append(o.publicPaths, paths...)
-	}
-}
-
-// buildAuthOptions 构建 auth 选项.
-func buildAuthOptions(o *options) []auth.Option {
-	var authOpts []auth.Option
-
-	// 添加 logger
-	if o.logger != nil {
-		authOpts = append(authOpts, auth.WithLogger(o.logger))
-	}
-
-	// 添加用户配置的选项
-	authOpts = append(authOpts, o.authOptions...)
-
-	// 构建 skipper
-	if len(o.publicPaths) > 0 {
-		authOpts = append(authOpts, auth.WithSkipper(buildPathSkipper(o.publicPaths)))
-	}
-
-	return authOpts
-}
-
 // buildPathSkipper 构建路径跳过器.
-func buildPathSkipper(publicPaths []string) auth.Skipper {
+func buildPathSkipper(paths []string) auth.Skipper {
 	exact := make(map[string]bool)
-	prefixes := make([]string, 0)
+	var prefixes []string
 
-	for _, p := range publicPaths {
+	for _, p := range paths {
 		if len(p) > 0 && p[len(p)-1] == '*' {
 			prefixes = append(prefixes, p[:len(p)-1])
 		} else {
@@ -361,12 +320,11 @@ func buildPathSkipper(publicPaths []string) auth.Skipper {
 		if !ok {
 			return false
 		}
-		path := r.URL.Path
-		if exact[path] {
+		if exact[r.URL.Path] {
 			return true
 		}
 		for _, prefix := range prefixes {
-			if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
+			if strings.HasPrefix(r.URL.Path, prefix) {
 				return true
 			}
 		}
@@ -374,28 +332,4 @@ func buildPathSkipper(publicPaths []string) auth.Skipper {
 	}
 }
 
-// WithClientIP 启用客户端 IP 提取.
-//
-// 启用后，可以通过 clientip.GetIP(ctx) 获取客户端真实 IP.
-//
-// 示例:
-//
-//	server := httpserver.New(handler,
-//	    httpserver.WithClientIP(),  // 默认配置
-//	)
-//
-//	// 或指定可信代理
-//	server := httpserver.New(handler,
-//	    httpserver.WithClientIP(
-//	        clientip.WithTrustedProxies("10.0.0.0/8"),
-//	    ),
-//	)
-func WithClientIP(opts ...clientip.Option) Option {
-	return func(o *options) {
-		o.enableClientIP = true
-		o.clientIPOptions = opts
-	}
-}
-
-// 确保 Server 实现了 transport.HealthCheckable 接口.
 var _ transport.HealthCheckable = (*Server)(nil)
