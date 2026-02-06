@@ -3,14 +3,14 @@ package ratelimit
 import (
 	"context"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // EndpointMiddleware 创建限流 Endpoint 中间件.
 //
 // 当请求被限流时返回 ErrRateLimited 错误.
-func EndpointMiddleware(limiter Limiter) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func EndpointMiddleware(limiter Limiter) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			if !limiter.Allow(ctx) {
 				return nil, ErrRateLimited
@@ -23,8 +23,8 @@ func EndpointMiddleware(limiter Limiter) transport.Middleware {
 // EndpointMiddlewareWithWait 创建阻塞式限流 Endpoint 中间件.
 //
 // 当请求被限流时阻塞等待，直到可以通过或 context 超时.
-func EndpointMiddlewareWithWait(limiter Limiter) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func EndpointMiddlewareWithWait(limiter Limiter) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			if err := limiter.Wait(ctx); err != nil {
 				return nil, err
@@ -45,8 +45,8 @@ type KeyedLimiterFunc func(key string) Limiter
 // KeyedEndpointMiddleware 创建基于键的限流 Endpoint 中间件.
 //
 // 可以为不同的用户/IP 使用不同的限流策略.
-func KeyedEndpointMiddleware(keyFunc KeyFunc, getLimiter KeyedLimiterFunc) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func KeyedEndpointMiddleware(keyFunc KeyFunc, getLimiter KeyedLimiterFunc) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			key := keyFunc(ctx, request)
 			limiter := getLimiter(key)

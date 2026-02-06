@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -169,8 +169,8 @@ func SpanID(ctx context.Context) string {
 // 使用示例:
 //
 //	endpoint = trace.EndpointMiddleware("my-service", "GetUser")(endpoint)
-func EndpointMiddleware(serviceName, operationName string) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func EndpointMiddleware(serviceName, operationName string) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (response any, err error) {
 			tracer := otel.Tracer(serviceName)
 			ctx, span := tracer.Start(ctx, operationName,
@@ -207,6 +207,6 @@ func NewEndpointTracer(serviceName string) *EndpointTracer {
 }
 
 // Middleware 返回指定操作的追踪中间件.
-func (t *EndpointTracer) Middleware(operationName string) transport.Middleware {
+func (t *EndpointTracer) Middleware(operationName string) endpoint.Middleware {
 	return EndpointMiddleware(t.serviceName, operationName)
 }

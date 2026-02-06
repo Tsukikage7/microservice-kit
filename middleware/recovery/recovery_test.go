@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // mockLogger 测试用 mock logger.
@@ -479,8 +479,8 @@ func TestMiddlewareChain(t *testing.T) {
 	callOrder := []string{}
 
 	// 创建一个记录调用顺序的中间件
-	orderMiddleware := func(name string) transport.Middleware {
-		return func(next transport.Endpoint) transport.Endpoint {
+	orderMiddleware := func(name string) endpoint.Middleware {
+		return func(next endpoint.Endpoint) endpoint.Endpoint {
 			return func(ctx context.Context, request any) (any, error) {
 				callOrder = append(callOrder, name+"-before")
 				resp, err := next(ctx, request)
@@ -491,17 +491,17 @@ func TestMiddlewareChain(t *testing.T) {
 	}
 
 	// 链接中间件
-	endpoint := func(ctx context.Context, request any) (any, error) {
+	ep := func(ctx context.Context, request any) (any, error) {
 		callOrder = append(callOrder, "endpoint")
 		return "ok", nil
 	}
 
 	// recovery 在最外层
-	wrapped := transport.Chain(
+	wrapped := endpoint.Chain(
 		EndpointMiddleware(WithLogger(log)),
 		orderMiddleware("first"),
 		orderMiddleware("second"),
-	)(endpoint)
+	)(ep)
 
 	_, _ = wrapped(context.Background(), nil)
 

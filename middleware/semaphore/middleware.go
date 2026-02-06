@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // MiddlewareOption 中间件配置选项.
@@ -51,13 +51,13 @@ func WithBlock(block bool) MiddlewareOption {
 //
 //	sem := semaphore.NewLocal(10)
 //	endpoint = semaphore.EndpointMiddleware(sem)(endpoint)
-func EndpointMiddleware(sem Semaphore, opts ...MiddlewareOption) transport.Middleware {
+func EndpointMiddleware(sem Semaphore, opts ...MiddlewareOption) endpoint.Middleware {
 	o := defaultMiddlewareOptions()
 	for _, opt := range opts {
 		opt(o)
 	}
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			var acquired bool
 

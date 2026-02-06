@@ -3,8 +3,8 @@ package recovery
 import (
 	"context"
 
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
 // EndpointMiddleware 返回 Endpoint panic 恢复中间件.
@@ -18,13 +18,13 @@ import (
 //
 //	endpoint := myEndpoint
 //	endpoint = recovery.EndpointMiddleware(recovery.WithLogger(log))(endpoint)
-func EndpointMiddleware(opts ...Option) transport.Middleware {
+func EndpointMiddleware(opts ...Option) endpoint.Middleware {
 	o := applyOptions(opts)
 	if o.Logger == nil {
 		panic("recovery: 日志记录器不能为空")
 	}
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (response any, err error) {
 			defer func() {
 				if p := recover(); p != nil {

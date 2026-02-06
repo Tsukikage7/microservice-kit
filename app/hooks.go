@@ -1,4 +1,4 @@
-package transport
+package app
 
 import "context"
 
@@ -7,20 +7,12 @@ type Hook func(ctx context.Context) error
 
 // Hooks 生命周期钩子集合.
 type Hooks struct {
-	// BeforeStart 启动前钩子（按添加顺序执行）.
 	BeforeStart []Hook
-
-	// AfterStart 启动后钩子（按添加顺序执行）.
-	AfterStart []Hook
-
-	// BeforeStop 停止前钩子（按添加顺序执行）.
-	BeforeStop []Hook
-
-	// AfterStop 停止后钩子（按添加顺序执行）.
-	AfterStop []Hook
+	AfterStart  []Hook
+	BeforeStop  []Hook
+	AfterStop   []Hook
 }
 
-// run 执行一组钩子.
 func (h *Hooks) run(ctx context.Context, hooks []Hook) error {
 	if h == nil {
 		return nil
@@ -33,7 +25,6 @@ func (h *Hooks) run(ctx context.Context, hooks []Hook) error {
 	return nil
 }
 
-// runBeforeStart 执行启动前钩子.
 func (h *Hooks) runBeforeStart(ctx context.Context) error {
 	if h == nil {
 		return nil
@@ -41,7 +32,6 @@ func (h *Hooks) runBeforeStart(ctx context.Context) error {
 	return h.run(ctx, h.BeforeStart)
 }
 
-// runAfterStart 执行启动后钩子.
 func (h *Hooks) runAfterStart(ctx context.Context) error {
 	if h == nil {
 		return nil
@@ -49,7 +39,6 @@ func (h *Hooks) runAfterStart(ctx context.Context) error {
 	return h.run(ctx, h.AfterStart)
 }
 
-// runBeforeStop 执行停止前钩子.
 func (h *Hooks) runBeforeStop(ctx context.Context) error {
 	if h == nil {
 		return nil
@@ -57,7 +46,6 @@ func (h *Hooks) runBeforeStop(ctx context.Context) error {
 	return h.run(ctx, h.BeforeStop)
 }
 
-// runAfterStop 执行停止后钩子.
 func (h *Hooks) runAfterStop(ctx context.Context) error {
 	if h == nil {
 		return nil
@@ -72,9 +60,7 @@ type HooksBuilder struct {
 
 // NewHooks 创建钩子构建器.
 func NewHooks() *HooksBuilder {
-	return &HooksBuilder{
-		hooks: &Hooks{},
-	}
+	return &HooksBuilder{hooks: &Hooks{}}
 }
 
 // BeforeStart 添加启动前钩子.

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // HTTPMiddleware 返回 HTTP 指标采集中间件.
@@ -64,8 +64,8 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 //
 //	collector, _ := metrics.New(cfg)
 //	endpoint = metrics.EndpointMiddleware(collector, "my-service", "GetUser")(endpoint)
-func EndpointMiddleware(collector *PrometheusCollector, service, method string) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func EndpointMiddleware(collector *PrometheusCollector, service, method string) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (response any, err error) {
 			start := time.Now()
 
@@ -98,6 +98,6 @@ func NewEndpointInstrumenter(collector *PrometheusCollector, service string) *En
 }
 
 // Middleware 返回指定方法的指标中间件.
-func (i *EndpointInstrumenter) Middleware(method string) transport.Middleware {
+func (i *EndpointInstrumenter) Middleware(method string) endpoint.Middleware {
 	return EndpointMiddleware(i.collector, i.service, method)
 }

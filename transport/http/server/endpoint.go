@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"github.com/Tsukikage7/microservice-kit/transport/response"
 )
 
@@ -57,7 +57,7 @@ type ResponseFunc func(ctx context.Context, w http.ResponseWriter) context.Conte
 //	)
 //	mux.Handle("/users/{id}", getUserHandler)
 type EndpointHandler struct {
-	endpoint     transport.Endpoint
+	endpoint     endpoint.Endpoint
 	dec          DecodeRequestFunc
 	enc          EncodeResponseFunc
 	before       []RequestFunc
@@ -80,7 +80,7 @@ type EndpointOption func(*EndpointHandler)
 //	    server.WithBefore(extractAuthToken),
 //	)
 func NewEndpointHandler(
-	e transport.Endpoint,
+	e endpoint.Endpoint,
 	dec DecodeRequestFunc,
 	enc EncodeResponseFunc,
 	opts ...EndpointOption,

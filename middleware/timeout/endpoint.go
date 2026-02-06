@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
 )
 
 // EndpointMiddleware 返回 Endpoint 超时控制中间件.
@@ -26,14 +26,14 @@ import (
 //	endpoint = timeout.EndpointMiddleware(5*time.Second,
 //	    timeout.WithLogger(log),
 //	)(endpoint)
-func EndpointMiddleware(timeout time.Duration, opts ...Option) transport.Middleware {
+func EndpointMiddleware(timeout time.Duration, opts ...Option) endpoint.Middleware {
 	if timeout <= 0 {
 		panic("timeout: 超时时间必须为正数")
 	}
 
 	o := applyOptions(timeout, opts)
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 创建带超时的 context
 			ctx, cancel := Cascade(ctx, o.timeout)
@@ -86,9 +86,9 @@ func EndpointMiddleware(timeout time.Duration, opts ...Option) transport.Middlew
 //	)(endpoint)
 func EndpointMiddlewareWithFallback(
 	timeout time.Duration,
-	fallback transport.Endpoint,
+	fallback endpoint.Endpoint,
 	opts ...Option,
-) transport.Middleware {
+) endpoint.Middleware {
 	if timeout <= 0 {
 		panic("timeout: 超时时间必须为正数")
 	}
@@ -98,7 +98,7 @@ func EndpointMiddlewareWithFallback(
 
 	o := applyOptions(timeout, opts)
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			ctx, cancel := Cascade(ctx, o.timeout)
 			defer cancel()

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // IdempotentRequest 支持幂等性的请求接口.
@@ -29,14 +29,14 @@ type IdempotentRequest interface {
 //
 //	store := idempotency.NewRedisStore(redisClient)
 //	endpoint = idempotency.EndpointMiddleware(store)(endpoint)
-func EndpointMiddleware(store Store, opts ...Option) transport.Middleware {
+func EndpointMiddleware(store Store, opts ...Option) endpoint.Middleware {
 	if store == nil {
 		panic("idempotency: 存储实例不能为空")
 	}
 
 	o := applyOptions(store, opts)
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 提取幂等键
 			var key string

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Tsukikage7/microservice-kit/logger"
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // Middleware 返回 Endpoint 认证中间件.
@@ -13,7 +13,7 @@ import (
 //
 //	authenticator := jwt.NewAuthenticator(jwtSrv)
 //	endpoint = auth.Middleware(authenticator)(endpoint)
-func Middleware(authenticator Authenticator, opts ...Option) transport.Middleware {
+func Middleware(authenticator Authenticator, opts ...Option) endpoint.Middleware {
 	if authenticator == nil {
 		panic("auth: 认证器不能为空")
 	}
@@ -23,7 +23,7 @@ func Middleware(authenticator Authenticator, opts ...Option) transport.Middlewar
 		opt(o)
 	}
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 检查是否跳过
 			if o.skipper != nil && o.skipper(ctx, request) {
@@ -92,13 +92,13 @@ func handleError(ctx context.Context, err error, o *options) error {
 }
 
 // RequireRoles 便捷函数，创建需要指定角色的中间件.
-func RequireRoles(authenticator Authenticator, roles []string, opts ...Option) transport.Middleware {
+func RequireRoles(authenticator Authenticator, roles []string, opts ...Option) endpoint.Middleware {
 	opts = append(opts, WithAuthorizer(NewRoleAuthorizer(roles)))
 	return Middleware(authenticator, opts...)
 }
 
 // RequirePermissions 便捷函数，创建需要指定权限的中间件.
-func RequirePermissions(authenticator Authenticator, permissions []string, opts ...Option) transport.Middleware {
+func RequirePermissions(authenticator Authenticator, permissions []string, opts ...Option) endpoint.Middleware {
 	opts = append(opts, WithAuthorizer(NewPermissionAuthorizer(permissions)))
 	return Middleware(authenticator, opts...)
 }

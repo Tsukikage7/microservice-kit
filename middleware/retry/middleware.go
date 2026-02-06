@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 )
 
 // Config 重试配置.
@@ -62,7 +62,7 @@ func NeverRetry(_ error) bool {
 //
 //	cfg := retry.DefaultConfig()
 //	endpoint = retry.EndpointMiddleware(cfg)(endpoint)
-func EndpointMiddleware(cfg *Config) transport.Middleware {
+func EndpointMiddleware(cfg *Config) endpoint.Middleware {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -73,7 +73,7 @@ func EndpointMiddleware(cfg *Config) transport.Middleware {
 		cfg.Retryable = AlwaysRetry
 	}
 
-	return func(next transport.Endpoint) transport.Endpoint {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (response any, err error) {
 			for attempt := 0; attempt < cfg.MaxAttempts; attempt++ {
 				// 检查上下文是否已取消
@@ -125,7 +125,7 @@ func NewEndpointRetrier(cfg *Config) *EndpointRetrier {
 }
 
 // Middleware 返回重试中间件.
-func (r *EndpointRetrier) Middleware() transport.Middleware {
+func (r *EndpointRetrier) Middleware() endpoint.Middleware {
 	return EndpointMiddleware(r.cfg)
 }
 

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -24,8 +24,8 @@ type ClaimsFactory func() Claims
 //
 //	jwtSrv := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	endpoint = jwt.NewSigner(jwtSrv)(endpoint)
-func NewSigner(j *JWT) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func NewSigner(j *JWT) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 从上下文获取 Claims
 			claims, ok := ClaimsFromContext(ctx)
@@ -57,8 +57,8 @@ func NewSigner(j *JWT) transport.Middleware {
 //
 //	jwtSrv := jwt.NewJWT(jwt.WithSecretKey("secret"), jwt.WithLogger(log))
 //	endpoint = jwt.NewParser(jwtSrv)(endpoint)
-func NewParser(j *JWT) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func NewParser(j *JWT) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 检查白名单
 			if j.IsWhitelisted(ctx, request) {
@@ -96,8 +96,8 @@ func NewParser(j *JWT) transport.Middleware {
 //	endpoint = jwt.NewParserWithClaims(jwtSrv, func() jwt.Claims {
 //	    return &CustomClaims{}
 //	})(endpoint)
-func NewParserWithClaims(j *JWT, cf ClaimsFactory) transport.Middleware {
-	return func(next transport.Endpoint) transport.Endpoint {
+func NewParserWithClaims(j *JWT, cf ClaimsFactory) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request any) (any, error) {
 			// 检查白名单
 			if j.IsWhitelisted(ctx, request) {

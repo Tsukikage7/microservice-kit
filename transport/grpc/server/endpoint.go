@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/Tsukikage7/microservice-kit/transport"
+	"github.com/Tsukikage7/microservice-kit/endpoint"
 	"github.com/Tsukikage7/microservice-kit/transport/response"
 	"google.golang.org/grpc/metadata"
 )
@@ -61,7 +61,7 @@ type ErrorHandlerFunc func(err error) error
 //	    encodeGetUserResponse,
 //	)
 type EndpointHandler struct {
-	endpoint     transport.Endpoint
+	endpoint     endpoint.Endpoint
 	dec          DecodeRequestFunc
 	enc          EncodeResponseFunc
 	before       []RequestFunc
@@ -83,7 +83,7 @@ type EndpointOption func(*EndpointHandler)
 //	    server.WithBefore(extractAuthFromMD),
 //	)
 func NewEndpointHandler(
-	e transport.Endpoint,
+	e endpoint.Endpoint,
 	dec DecodeRequestFunc,
 	enc EncodeResponseFunc,
 	opts ...EndpointOption,
